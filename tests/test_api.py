@@ -51,6 +51,7 @@ class ApiIntegrationTests(unittest.TestCase):
         iid=incident["incident_id"]
         self.assertEqual("new",incident["workflow"]["status"])
         self.assertEqual("P1",incident["workflow"]["priority"])
+        self.assertEqual(0,incident["workflow"]["version"])
         workflow=self.get("/api/incidents/"+iid+"/workflow")
         self.assertEqual(workflow["state"]["status"],"new")
         changed=self.patch("/api/incidents/"+iid+"/workflow",{"changes":{"status":"acknowledged","assignee":"triage","priority":"P2"},"actor":"test-analyst"})
