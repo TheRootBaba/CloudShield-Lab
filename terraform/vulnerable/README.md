@@ -9,5 +9,3 @@ terraform plan
 ```
 
 If you choose to apply in a disposable isolated account, understand the risk and cost first, use no sensitive data, restrict the lab's lifetime, and destroy immediately. No CloudShield command applies this configuration.
-
-[executed on device: babam-desktop (5b84c11b-7f66-494f-9e6d-0dd5f16de169)]

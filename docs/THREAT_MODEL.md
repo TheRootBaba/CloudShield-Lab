@@ -30,5 +30,3 @@ CloudShield Lab is a defensive learning environment for validating detections ag
 ## Limitations
 
 The current rules are demonstrations, not a complete threat-detection system. An IAM policy change may be legitimate; public access may be intentional; network exposure needs business context. Findings require human investigation.
-
-[executed on device: babam-desktop (5b84c11b-7f66-494f-9e6d-0dd5f16de169)]

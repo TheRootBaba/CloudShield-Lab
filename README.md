@@ -50,5 +50,3 @@ Cloud resources can incur charges, including CloudTrail and Security Hub. Review
 - `docs/`: architecture, roadmap and threat model.
 
 MIT License.
-
-[executed on device: babam-desktop (5b84c11b-7f66-494f-9e6d-0dd5f16de169)]

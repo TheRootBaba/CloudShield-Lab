@@ -23,5 +23,3 @@ provider "registry.terraform.io/hashicorp/aws" {
     "zh:ff461571e3f233699bf690db319dfe46aec75e58726636a0d97dd9ac6e32fb70",
   ]
 }
-
-[executed on device: babam-desktop (5b84c11b-7f66-494f-9e6d-0dd5f16de169)]

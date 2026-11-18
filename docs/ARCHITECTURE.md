@@ -36,5 +36,3 @@ The initial correlator groups findings by the same actor and account while adjac
 - `cloudshield incident INCIDENT_ID`: retrieve a persisted incident.
 
 The SQLite database defaults to `artifacts/evidence.sqlite3`; use `--database` to select another path.
-
-[executed on device: babam-desktop (5b84c11b-7f66-494f-9e6d-0dd5f16de169)]

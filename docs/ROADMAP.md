@@ -45,5 +45,3 @@ This is a local-first engineering lab, not a production CSPM/SIEM. The three det
 - Add opt-in AWS-backed simulations that collect actual CloudTrail records.
 - Add resource-graph attack-path inference and analyst workflow state.
 - Build the premium web console on top of the tested API/domain layer.
-
-[executed on device: babam-desktop (5b84c11b-7f66-494f-9e6d-0dd5f16de169)]

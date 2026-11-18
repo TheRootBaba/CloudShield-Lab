@@ -44,5 +44,3 @@ class EndToEndTests(unittest.TestCase):
         self.assertEqual(len(build_incidents(events,findings,window_minutes=30)),2)
         self.assertEqual(len(build_incidents(events,findings,window_minutes=180)),1)
 if __name__=="__main__": unittest.main()
-
-[executed on device: babam-desktop (5b84c11b-7f66-494f-9e6d-0dd5f16de169)]

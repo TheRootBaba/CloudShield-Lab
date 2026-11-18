@@ -94,5 +94,3 @@ def load_events(payload: Any) -> list[CloudEvent]:
     else:
         raise ValueError("Input must be an event object, a list, or a CloudTrail Records document")
     return [CloudEvent.from_dict(row) for row in rows]
-
-[executed on device: babam-desktop (5b84c11b-7f66-494f-9e6d-0dd5f16de169)]

@@ -96,5 +96,3 @@ def investigation(event_id: str, events: list[CloudEvent], findings: list[Findin
             "integrity_note": "SHA-256 covers canonicalized raw event JSON; it is an integrity fingerprint, not a digital signature or proof of origin.",
         },
     }
-
-[executed on device: babam-desktop (5b84c11b-7f66-494f-9e6d-0dd5f16de169)]

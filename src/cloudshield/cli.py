@@ -50,5 +50,3 @@ def main(argv=None):
     print(json.dumps(result,indent=2,sort_keys=True,default=str))
     return 0
 if __name__=="__main__": raise SystemExit(main())
-
-[executed on device: babam-desktop (5b84c11b-7f66-494f-9e6d-0dd5f16de169)]

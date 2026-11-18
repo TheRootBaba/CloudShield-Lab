@@ -103,5 +103,3 @@ resource "aws_cloudtrail" "audit" {
 resource "aws_securityhub_account" "enabled" {
   count = var.enable_lab_resources ? 1 : 0
 }
-
-[executed on device: babam-desktop (5b84c11b-7f66-494f-9e6d-0dd5f16de169)]

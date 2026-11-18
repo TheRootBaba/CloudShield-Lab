@@ -79,5 +79,3 @@ class EvidenceStore:
             row=db.execute("SELECT payload_json,payload_sha256 FROM incidents WHERE incident_id=?",(incident_id,)).fetchone()
         if row is None: raise KeyError(f"Incident not found: {incident_id}")
         return {"incident":json.loads(row[0]),"evidence_sha256":row[1]}
-
-[executed on device: babam-desktop (5b84c11b-7f66-494f-9e6d-0dd5f16de169)]
