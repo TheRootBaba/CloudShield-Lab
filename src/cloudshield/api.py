@@ -218,6 +218,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(404, {"error": "Not found"})
         except PermissionError as exc:
             return self._send(403, {"error": str(exc)})
+        except KeyError as exc:
+            return self._send(404, {"error": str(exc).strip("'")})
         except (ValueError, json.JSONDecodeError) as exc:
             return self._send(400, {"error": str(exc)})
         except Exception as exc:
