@@ -122,7 +122,15 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/dashboard":
                 return self._send(200, _dashboard())
             if path == "/api/incidents":
-                return self._send(200, [row["data"] for row in _rows("incidents", 500)])
+                _ensure_store()
+                with _connect() as db:
+                    rows=db.execute("SELECT i.payload_json,w.status,w.assignee,w.priority,w.updated_at,w.version FROM incidents i LEFT JOIN incident_workflow w ON w.incident_id=i.incident_id ORDER BY i.rowid DESC LIMIT 500").fetchall()
+                incidents=[]
+                for row in rows:
+                    item=json.loads(row[0]);severity=str(item.get("severity","INFO")).upper()
+                    item["workflow"]={"status":row[1] or "new","assignee":row[2],"priority":row[3] or {"CRITICAL":"P1","HIGH":"P2","MEDIUM":"P3","LOW":"P4"}.get(severity,"P4"),"updated_at":row[4],"version":row[5] or 0}
+                    incidents.append(item)
+                return self._send(200,incidents)
             if path.startswith("/api/incidents/") and path.endswith("/workflow"):
                 incident_id=path[len("/api/incidents/"):-len("/workflow")]
                 return self._send(200,get_workflow(DB_PATH,incident_id))
