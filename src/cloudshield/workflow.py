@@ -16,10 +16,19 @@ TRANSITIONS={
 PRIORITIES={"P1","P2","P3","P4"}
 
 def _now(): return datetime.now(timezone.utc).isoformat(timespec="seconds")
+from contextlib import contextmanager
+@contextmanager
 def _connect(path):
  db=sqlite3.connect(str(path));db.row_factory=sqlite3.Row
  db.execute("PRAGMA foreign_keys=ON")
- return db
+ try:
+  yield db
+  db.commit()
+ except Exception:
+  db.rollback()
+  raise
+ finally:
+  db.close()
 
 def ensure_schema(path):
  Path(path).parent.mkdir(parents=True,exist_ok=True)
@@ -87,11 +96,11 @@ def update_workflow(path,incident_id,changes,actor="analyst"):
    changes["assignee"]=assignee.strip() if assignee else None
   before={k:current[k] for k in ("status","assignee","priority")}
   after={**before,**changes}
-  if after==before: return get_workflow(path,incident_id)
-  now=_now();version=current["version"]+1
-  db.execute("UPDATE incident_workflow SET status=?,assignee=?,priority=?,updated_at=?,version=? WHERE incident_id=?",
+  if after!=before:
+   now=_now();version=current["version"]+1
+   db.execute("UPDATE incident_workflow SET status=?,assignee=?,priority=?,updated_at=?,version=? WHERE incident_id=?",
     (after["status"],after["assignee"],after["priority"],now,version,incident_id))
-  db.execute("INSERT INTO incident_activity(incident_id,activity_type,actor,details_json,created_at) VALUES(?,?,?,?,?)",(incident_id,"updated",actor,json.dumps({"before":before,"after":after},sort_keys=True),now))
+   db.execute("INSERT INTO incident_activity(incident_id,activity_type,actor,details_json,created_at) VALUES(?,?,?,?,?)",(incident_id,"updated",actor,json.dumps({"before":before,"after":after},sort_keys=True),now))
  return get_workflow(path,incident_id)
 
 def add_note(path,incident_id,note,actor="analyst"):
