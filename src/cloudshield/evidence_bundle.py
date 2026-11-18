@@ -37,22 +37,37 @@ def verify_bundle(bundle):
  if manifest.get("hash_algorithm")!="SHA-256":errors.append("Unsupported hash algorithm")
  body={k:v for k,v in bundle.items() if k!="manifest"}
  if digest(body)!=manifest.get("bundle_sha256"):errors.append("Bundle manifest hash mismatch")
- checks={"incident":False,"events":0,"findings":0,"references":True}
+ checks={"incident":False,"events":0,"findings":0,"references":True,"workflow":False}
  incident=bundle.get("incident")
- if isinstance(incident,dict) and "data" in incident:
+ if isinstance(incident,dict) and isinstance(incident.get("data"),dict):
   checks["incident"]=digest(incident["data"])==incident.get("sha256")
   if not checks["incident"]:errors.append("Incident digest mismatch")
  else:errors.append("Incident record missing or malformed")
- for item in bundle.get("events",[]):
-  if not isinstance(item,dict) or "event" not in item:errors.append("Malformed event evidence item");continue
-  ok=digest(item["event"])==item.get("sha256");checks["events"]+=1
-  if not ok:errors.append("Event digest mismatch: "+str(item["event"].get("event_id","unknown")))
- for item in bundle.get("findings",[]):
-  if not isinstance(item,dict) or "finding" not in item:errors.append("Malformed finding evidence item");continue
-  ok=digest(item["finding"])==item.get("sha256");checks["findings"]+=1
-  if not ok:errors.append("Finding digest mismatch: "+str(item["finding"].get("finding_id",item["finding"].get("rule_id","unknown"))))
- timeline_ids=set((t.get("event_id") for t in incident.get("data",{}).get("timeline",[]))) if isinstance(incident,dict) else set()
- event_ids=set((e.get("event",{}).get("event_id") for e in bundle.get("events",[]) if isinstance(e,dict)))
- if not event_ids.issubset(timeline_ids):checks["references"]=False;errors.append("Bundle contains event not referenced by incident timeline")
- if not timeline_ids.issubset(event_ids):checks["references"]=False;errors.append("Incident timeline references missing event evidence")
+ events=bundle.get("events",[])
+ findings=bundle.get("findings",[])
+ if not isinstance(events,list):errors.append("Events must be an array");events=[]
+ if not isinstance(findings,list):errors.append("Findings must be an array");findings=[]
+ event_ids=set()
+ for item in events:
+  if not isinstance(item,dict) or not isinstance(item.get("event"),dict):errors.append("Malformed event evidence item");continue
+  event=item["event"];ok=digest(event)==item.get("sha256");checks["events"]+=1
+  if event.get("event_id"):event_ids.add(str(event["event_id"]))
+  if not ok:errors.append("Event digest mismatch: "+str(event.get("event_id","unknown")))
+ for item in findings:
+  if not isinstance(item,dict) or not isinstance(item.get("finding"),dict):errors.append("Malformed finding evidence item");continue
+  finding=item["finding"];ok=digest(finding)==item.get("sha256");checks["findings"]+=1
+  if not ok:errors.append("Finding digest mismatch: "+str(finding.get("finding_id",finding.get("rule_id","unknown"))))
+  if finding.get("event_id") and str(finding["event_id"]) not in event_ids:errors.append("Finding references missing event: "+str(finding["event_id"]))
+ timeline_ids=set()
+ if checks["incident"]:
+  timeline=incident["data"].get("timeline",[])
+  if not isinstance(timeline,list):errors.append("Incident timeline must be an array");timeline=[]
+  timeline_ids={str(t.get("event_id")) for t in timeline if isinstance(t,dict) and t.get("event_id")}
+ if event_ids!=timeline_ids:checks["references"]=False;errors.append("Bundle event references do not match incident timeline")
+ workflow=bundle.get("workflow")
+ if isinstance(workflow,dict) and isinstance(workflow.get("state"),dict) and isinstance(workflow.get("activity"),list):
+  checks["workflow"]=True
+ else:errors.append("Workflow state or activity history missing/malformed")
+ for key,count in (("event_count",len(events)),("finding_count",len(findings)),("activity_count",len(workflow.get("activity",[])) if isinstance(workflow,dict) and isinstance(workflow.get("activity"),list) else -1)):
+  if manifest.get(key)!=count:errors.append("Manifest "+key+" mismatch")
  return {"valid":not errors,"errors":errors,"checked":checks,"bundle_sha256":manifest.get("bundle_sha256")}
