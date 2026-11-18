@@ -5,7 +5,7 @@ from datetime import datetime,timezone
 from pathlib import Path
 from .workflow import ensure_schema,get_workflow
 
-def canonical(value): return json.dumps(value,sort_keys=True,separators=(",",":"),ensure_ascii=False,default=str)
+def canonical(value): return json.dumps(value,sort_keys=True,separators=(",",":"),ensure_ascii=True,default=str)
 def digest(value): return hashlib.sha256(canonical(value).encode("utf-8")).hexdigest()
 
 def build_bundle(path,incident_id):
