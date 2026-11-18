@@ -55,13 +55,23 @@ See docs/DETECTION_COVERAGE.md for rule IDs and supported patterns.
 - Incident grouping remains an actor/account/time-window heuristic. The relationship graph makes temporal and resource overlap visible, but does not infer verified causality or a complete attack path.
 - The AWS collector is optional and reads CloudTrail management event history only. It is not a streaming pipeline, organization-wide deployment, or guaranteed complete audit feed.
 - SHA-256 fingerprints detect content changes relative to a known digest; they are not digital signatures, trusted timestamps, or proof of source authenticity.
-- The SQLite store is single-user and local, not a multi-tenant production database.
+- Analyst workflow per incident: status transitions, priority, assignee, and append-only activity notes.
+- Portable incident evidence bundles containing incident/event/finding digests, workflow history and a bundle manifest; verifier checks hash integrity and timeline references.
+- The SQLite store is single-user and local, not a multi-tenant production database. Workflow actor names are user-supplied and are not authenticated. Evidence bundle hashes are tamper-evident only relative to a trusted copy of the manifest; bundles are not digitally signed.
 
 ## Security and operational defaults
 
 The server binds to 127.0.0.1. Do not expose it to a public network. No authentication is implemented because this is a loopback-only local lab. Do not bind to 0.0.0.0 or put it behind a public reverse proxy without authentication, authorization, CSRF protection and deployment hardening.
 
 Uploaded JSON is treated as untrusted input. The local API enforces a 2 MiB body limit and sends restrictive browser security headers. No cloud collection, resource creation, remediation or AWS writes happen unless the operator explicitly enables the one-shot collector. Terraform examples remain separate and opt-in.
+
+## Incident workflow and evidence bundles
+
+- Use the incident drawer to set workflow status (`new`, `acknowledged`, `in_progress`, `resolved`, `reopened`), priority, assignee and add analyst notes.
+- Workflow changes and notes are retained in a local activity history.
+- Export a portable JSON bundle from an incident and automatically verify it before download. The Evidence Vault can verify a previously exported bundle.
+- API: `GET /api/incidents/{id}/workflow`, `PATCH /api/incidents/{id}/workflow`, `POST /api/incidents/{id}/notes`, `GET /api/incidents/{id}/export`, and `POST /api/evidence/verify`.
+- Integrity checks validate incident/event/finding digests, manifest digest and event references. This is not cryptographic authenticity or trusted chain of custody.
 
 ## Terraform safety
 
