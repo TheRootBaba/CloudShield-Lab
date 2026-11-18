@@ -1,38 +1,47 @@
 # Architecture
 
-CloudShield's local pipeline is deliberately dependency-light:
+## Runtime
 
-1. JSON input is normalized into immutable `CloudEvent` records (CloudTrail and AWS Security Hub finding adapters).
-2. Explainable detector rules create `Finding` records with rule IDs, severity, rationale and source evidence.
-3. The analytics layer groups findings by actor and account, splitting clusters when adjacent findings exceed the configured time window.
-4. Investigations retain the original event payload and a canonical SHA-256 evidence fingerprint.
-5. The optional SQLite evidence store persists events, findings and incidents transactionally and idempotently.
+- cloudshield.api serves the static command center and local JSON API using Python standard-library HTTP components.
+- pipeline.py normalizes events, applies explainable detection rules and groups findings into incidents.
+- storage.py persists normalized events, findings and incidents transactionally in SQLite.
+- graph.py creates a relationship graph with finding/event, actor, account and resource nodes. Observed resource references and temporal adjacency edges are labelled with their evidence.
+- collector.py is an optional boto3 adapter for one-shot read-only CloudTrail LookupEvents requests.
+
+## API
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | /api/health | Service and collector capability status |
+| GET | /api/dashboard | Stored evidence summary and recent records |
+| GET | /api/incidents | Incident list |
+| GET | /api/incidents/{id} | Incident, digest and relationship graph |
+| GET | /api/findings | Stored findings |
+| GET | /api/events | Normalized stored events and evidence fingerprints |
+| GET | /api/evidence/{event_id} | Event and associated finding digests |
+| GET | /api/rules | Rule inventory |
+| GET | /api/collector/status | AWS SDK and local credential-source status |
+| POST | /api/ingest | Analyze and persist supplied JSON |
+| POST | /api/simulate | Generate and persist explicitly synthetic scenario telemetry |
+| POST | /api/collector/aws | Explicit one-shot CloudTrail lookup; requires opt-in environment flag |
+
+The API binds to loopback by default and has no user authentication. It is intended for a single-user local lab only. POST requests require JSON and same-origin requests when an Origin header is supplied.
+
+## Correlation and graph semantics
+
+The incident builder groups findings by actor and account when adjacent finding timestamps are within a time window. The relationship graph includes event/finding nodes, actor and account context nodes, resource nodes derived from normalized resource identifiers, and temporal sequence hypotheses. Resource-reference edges reflect observed fields. Temporal sequence edges reflect membership in the same correlated incident and optional resource overlap. They do not establish causality, identity delegation, resource ownership or a complete attack path.
+
+## Evidence
+
+SQLite stores canonical JSON payloads and SHA-256 fingerprints. Hashes support integrity comparison but do not prove source authenticity, prevent database replacement or provide trusted timestamps. The database is single-user local storage.
+
+## AWS collector safety
+
+The optional collector calls only CloudTrail LookupEvents. It is disabled unless CLOUDSHIELD_ENABLE_AWS_COLLECTOR=1 is set in the server process environment. Each request is operator-initiated, region-scoped, limited to a 1–1440 minute lookback and at most five pages. No polling, event subscription, resource creation or AWS write API is performed.
 
 ## Trust boundaries
 
-- Input fixtures, uploaded JSON and simulator output are untrusted input.
-- The simulator creates synthetic JSON only; it never calls AWS APIs or performs network activity.
-- Terraform is separate from the local pipeline. The secure and vulnerable roots are opt-in examples and no CLI command applies them.
-- SQLite is a single-user local evidence store, not a multi-tenant production database.
-- SHA-256 hashes identify canonical payloads; they do not prove source authenticity, prevent database replacement or provide trusted timestamps.
-
-## Correlation semantics
-
-The initial correlator groups findings by the same actor and account while adjacent findings remain within the configured time window. This is a transparent heuristic, not causal attribution or a complete attack-path graph. Timeline ordering uses parsed event timestamps with event IDs as deterministic tie-breakers. Missing or malformed timestamps remain grouped conservatively and should be investigated.
-
-## Infrastructure
-
-- `terraform/secure` provisions a CloudTrail evidence bucket with public access blocks, encryption and versioning, a multi-region trail, and Security Hub.
-- `terraform/vulnerable` intentionally disables S3 public-access blocks and opens SSH to all IPv4 addresses for training/static validation only.
-- Terraform formatting and provider-backed validation run in CI. No `apply` runs in CI.
-
-## CLI
-
-- `cloudshield analyze events.json`: normalize, detect, correlate and emit JSON.
-- `cloudshield simulate all`: generate offline synthetic attack telemetry.
-- `cloudshield investigate events.json EVENT_ID`: inspect a source event and findings.
-- `cloudshield store events.json`: analyze and persist evidence to local SQLite.
-- `cloudshield timeline`: query stored event evidence.
-- `cloudshield incident INCIDENT_ID`: retrieve a persisted incident.
-
-The SQLite database defaults to `artifacts/evidence.sqlite3`; use `--database` to select another path.
+- Imported JSON, synthetic fixtures and cloud responses are untrusted.
+- The local server must not be exposed to untrusted networks.
+- Terraform roots are independent examples; no API route runs Terraform.
+- No AWS credentials are needed for offline tests and simulations.

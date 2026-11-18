@@ -1,32 +1,48 @@
-# Threat model (initial)
+# Threat model
 
-## Purpose
+## Purpose and deployment boundary
 
-CloudShield Lab is a defensive learning environment for validating detections against cloud audit events. The initial implementation processes local, synthetic JSON fixtures only.
+CloudShield Lab is a defensive engineering lab. The default runtime binds to 127.0.0.1 and is intended for one local analyst. It has no user authentication or multi-tenant isolation. Do not expose it to a LAN, public network, reverse proxy or hosted environment without adding authentication, authorization, CSRF protections, rate limits, audit controls and deployment hardening.
 
-## Assets to protect
+## Assets
 
-- Integrity of detection rules and test fixtures.
-- Confidentiality of any future imported audit logs.
-- Integrity of any future remediation actions.
-- Availability and cost boundaries of any optional cloud sandbox.
+- Integrity of detection rules, source code and test fixtures.
+- Confidentiality of imported CloudTrail / Security Hub records and local SQLite evidence.
+- Integrity of evidence fingerprints and incident timelines.
+- AWS credentials available through the local credential provider chain.
+- Cloud account availability and cost boundaries.
 
 ## Threats considered
 
-- A privileged identity changes a role or user policy to expand access.
-- A bucket policy accidentally or deliberately grants public read access.
-- A security-group change exposes SSH/RDP or all protocols to the internet.
-- A future remediation routine makes an unsafe change or acts on the wrong resource.
-- Sensitive account identifiers, tokens or production logs are accidentally committed.
+- Malformed or oversized JSON import payloads.
+- Cross-origin browser requests targeting the loopback API.
+- Untrusted event fields attempting to inject HTML into the analyst interface.
+- Local database replacement or tampering.
+- Unauthorized use of the local AWS credential chain.
+- Unexpected CloudTrail API usage or cost.
+- Incomplete or misleading detections and correlation claims.
+- Accidental exposure of production logs, account identifiers or credentials in Git.
 
-## Safety controls
+## Controls implemented
 
-- Synthetic account IDs, IP addresses and resource names in committed fixtures.
-- No AWS credentials or cloud API calls in the initial release.
-- No automatic remediation in the initial release.
-- Future remediation must use explicit allowlists, dry-run mode, approval, audit logging and rollback design.
-- Secrets and raw customer logs must never be committed.
+- Server binds to loopback by default.
+- JSON request body limit of 2 MiB and content-type validation.
+- Origin validation on POST requests when an Origin header is present.
+- Restrictive browser security headers and escaped text rendering in the UI.
+- SQLite parameterized queries and transactional evidence writes.
+- SHA-256 fingerprints for canonical event, finding and incident payloads.
+- Synthetic fixtures use reserved sample account IDs, IP addresses and resource identifiers.
+- Simulator performs no network or cloud API calls.
+- AWS collector is disabled unless an explicit environment flag is set; collection is one-shot and read-only, uses the standard credential chain, limits lookback to 24 hours and caps pages per request.
+- No automatic remediation or AWS write API is implemented.
+- Terraform roots remain separate and require explicit opt-in for resource creation.
 
-## Limitations
+## Residual risks and limitations
 
-The current rules are demonstrations, not a complete threat-detection system. An IAM policy change may be legitimate; public access may be intentional; network exposure needs business context. Findings require human investigation.
+- Local users and processes with access to the machine can read or modify the SQLite database and local source.
+- SHA-256 does not prove origin, provide trusted timestamps or prevent an attacker from replacing both data and digest.
+- Loopback-only access is not a substitute for authentication if the app is exposed or if other local processes are untrusted.
+- Event-pattern detections can miss unsupported event shapes, services, data-plane activity and contextual attack signals.
+- Actor/account/time correlation and graph edges are investigative hypotheses, not causal proof.
+- The optional collector reads management-event history only and is not a durable streaming audit pipeline.
+- Human review is required before acting on findings. No remediation is automated.

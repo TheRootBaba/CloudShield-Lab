@@ -11,10 +11,14 @@ class EndToEndTests(unittest.TestCase):
             with self.subTest(name=name):
                 payload=simulate(name,at="2026-01-01T00:00:00Z")
                 result=analyze_payload(payload["events"])
-                self.assertEqual(result["events_analyzed"],1)
-                self.assertEqual(result["findings_count"],1)
+                expected = 4 if name == "multi-stage-compromise" else 1
+                self.assertEqual(result["events_analyzed"],expected)
+                self.assertEqual(result["findings_count"],expected)
                 self.assertEqual(result["incidents_count"],1)
                 self.assertEqual(result["incidents"][0]["timeline"][0]["event_id"],payload["events"][0]["eventID"])
+                if name == "multi-stage-compromise":
+                    self.assertEqual({f["rule_id"] for f in result["findings"]},
+                                     {"CS-IAM-001","CS-IAM-002","CS-CT-001","CS-NET-001"})
     def test_investigation_contains_evidence_hash(self):
         rows=[simulate("public-s3-policy")["events"][0]]
         events=load_events(rows)

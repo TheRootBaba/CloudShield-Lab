@@ -1,52 +1,76 @@
 # CloudShield Lab
 
-**Local-first cloud security detection, attack simulation and evidence-led investigation.**
+**A local-first cloud security command center for detection, investigation and evidence-led verification.**
 
-CloudShield is an educational engineering lab. It normalizes CloudTrail-style events, detects selected risky changes, generates reproducible synthetic attack scenarios, correlates findings, and produces evidence-backed investigation reports.
+CloudShield is an engineering lab and portfolio project. It is not a production CSPM/SIEM, not a replacement for GuardDuty or Security Hub, and not a claim of comprehensive cloud threat detection.
 
-## Implemented workflows
-- CloudTrail and AWS Security Hub finding normalization with account, region, actor, resource identifiers and source format.
-- Explainable detection for IAM policy mutations, public S3 bucket policies, and internet-exposed administrative ingress.
-- Offline synthetic attack scenarios. The simulator makes zero cloud API calls.
-- Incident grouping by actor/account and configurable time window, ordered timelines and stable incident identifiers.
-- Event-level investigation with canonical SHA-256 evidence fingerprints.
-- Idempotent local SQLite evidence storage for events, findings and incidents, with actor/account timeline filters.
-- Separate Terraform secure and intentionally vulnerable AWS configurations. Both default to no resource creation.
+## What is implemented
 
-## Honest limitations
-This is not a production CSPM/SIEM or a replacement for GuardDuty/Security Hub. Synthetic events are not real AWS telemetry. Current incident grouping is a heuristic, not causal attack-graph correlation. Evidence hashes are integrity fingerprints, not signatures or trusted timestamps. A cloud event collector, frontend, automated remediation and resource-graph attack-path inference are not implemented. Detection coverage is intentionally limited. Terraform configurations are validated locally but have not been applied to AWS.
+- Responsive security command center: overview, incidents, detections, relationship paths, evidence vault, data sources and rule library.
+- Local HTTP API backed by the detection pipeline and SQLite evidence store.
+- CloudTrail and AWS Security Hub event normalization.
+- Explainable detections for selected IAM, S3, EC2/network, CloudTrail, KMS, Lambda and RDS event patterns.
+- Offline synthetic scenarios, including a four-step multi-stage sequence. Synthetic source provenance is retained.
+- Incident grouping by actor/account and time window, with a graph view of observed time/resource relationships. Graph edges are hypotheses, not proof of causation.
+- SHA-256 evidence fingerprints for canonical stored event and incident payloads.
+- Optional, explicit, read-only AWS CloudTrail LookupEvents collection. Disabled by default.
 
-## Quick start (Python 3.10+, standard library only)
-```powershell
-pip install -e .
-python -m unittest discover -s tests -v
-cloudshield analyze fixtures/sample_cloudtrail.json
-cloudshield simulate public-s3-policy --output artifacts/public-s3.json
-cloudshield investigate fixtures/sample_cloudtrail.json demo-s3-001
-cloudshield store artifacts/public-s3.json
-cloudshield timeline
-```
+## Quick start (Windows PowerShell)
 
-Without installation, prefix commands with `$env:PYTHONPATH="src"; python -m cloudshield.cli`.
+1. Open PowerShell in the repository directory.
+2. Install the project: **python -m pip install -e .**
+3. Run tests: **python -m unittest discover -s tests -v**
+4. Start the app: **python -m cloudshield.api**
+5. Open **http://127.0.0.1:8765**.
+
+The first run is intentionally empty. Select **Run simulation** to create clearly marked synthetic lab data, or import your own CloudTrail / Security Hub JSON.
+
+CLI examples:
+- **cloudshield analyze fixtures/sample_cloudtrail.json**
+- **cloudshield simulate multi-stage-compromise --output artifacts/multi-stage.json**
+- **cloudshield store artifacts/multi-stage.json**
+- **cloudshield timeline**
+
+## Import formats
+
+CloudTrail event arrays, CloudTrail Records documents, Security Hub Findings exports, and EventBridge-style objects containing a detail object are supported. Use **Import events** in the UI. The request body is limited to 2 MiB. Evidence is stored in artifacts/evidence.sqlite3 by default. Set CLOUDSHIELD_DB to choose another path.
+
+## Optional live AWS CloudTrail collection
+
+Live collection is off by default and is a one-shot, read-only lookup. It uses the standard boto3 credential provider chain; CloudShield does not accept or store AWS secret keys.
+
+1. Install the optional dependency: **python -m pip install -e ".[aws]"**.
+2. Configure a local AWS profile or environment credentials with only cloudtrail:LookupEvents.
+3. Explicitly enable the feature in the server process: **$env:CLOUDSHIELD_ENABLE_AWS_COLLECTOR="1"**
+4. Start the app again and open **Data sources → AWS CloudTrail**. Choose a region and lookback up to 24 hours.
+
+The collector reads up to five pages of 50 events (250 maximum per run), does not poll continuously, and makes no AWS write calls. AWS API usage and related services may incur charges under your account. Do not use root credentials. No AWS resources are created by the local API.
+
+## Detection and investigation boundaries
+
+See docs/DETECTION_COVERAGE.md for rule IDs and supported patterns.
+
+- Coverage is selected event-pattern detection, not comprehensive threat detection. Unsupported services, event shapes, data-plane activity and contextual signals can be missed.
+- Synthetic scenarios generate fake CloudTrail-shaped JSON only. They do not execute attacks or call AWS.
+- Incident grouping remains an actor/account/time-window heuristic. The relationship graph makes temporal and resource overlap visible, but does not infer verified causality or a complete attack path.
+- The AWS collector is optional and reads CloudTrail management event history only. It is not a streaming pipeline, organization-wide deployment, or guaranteed complete audit feed.
+- SHA-256 fingerprints detect content changes relative to a known digest; they are not digital signatures, trusted timestamps, or proof of source authenticity.
+- The SQLite store is single-user and local, not a multi-tenant production database.
+
+## Security and operational defaults
+
+The server binds to 127.0.0.1. Do not expose it to a public network. No authentication is implemented because this is a loopback-only local lab. Do not bind to 0.0.0.0 or put it behind a public reverse proxy without authentication, authorization, CSRF protection and deployment hardening.
+
+Uploaded JSON is treated as untrusted input. The local API enforces a 2 MiB body limit and sends restrictive browser security headers. No cloud collection, resource creation, remediation or AWS writes happen unless the operator explicitly enables the one-shot collector. Terraform examples remain separate and opt-in.
 
 ## Terraform safety
-Examples are under `terraform/secure` and `terraform/vulnerable`. Both require explicit opt-in via `-var enable_lab_resources=true`; default validation/planning creates no resources. The vulnerable configuration intentionally exposes SSH and disables S3 public-access protections. It is for isolated disposable accounts only and must never be applied to production/shared accounts.
 
-Validate without deploying:
-```powershell
-terraform -chdir=terraform/secure init -backend=false
-terraform -chdir=terraform/secure validate
-terraform -chdir=terraform/vulnerable init -backend=false
-terraform -chdir=terraform/vulnerable validate
-```
+Examples remain under terraform/secure and terraform/vulnerable. Both default to no resource creation and require explicit opt-in. The vulnerable root intentionally creates insecure training fixtures. Never apply it to a production or shared account. Review cost, region, IAM permissions and teardown before any AWS apply.
 
-Cloud resources can incur charges, including CloudTrail and Security Hub. Review permissions, region, budget alerts and teardown before any apply. No AWS credentials are needed for local Python tests or Terraform validation.
+## Tests
 
-## Structure
-- `src/cloudshield/`: normalization, detection, analytics, pipeline, simulator, SQLite evidence store and CLI.
-- `fixtures/`: synthetic event data.
-- `tests/`: unit and end-to-end tests.
-- `terraform/secure` and `terraform/vulnerable`: opt-in Terraform configurations.
-- `docs/`: architecture, roadmap and threat model.
+Run **python -m compileall -q src tests** and **python -m unittest discover -s tests -v**.
+
+The suite covers normalization, selected detections, simulation, incident grouping, graph semantics, API integration, SQLite persistence and Terraform safety fixtures.
 
 MIT License.

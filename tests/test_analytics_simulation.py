@@ -10,7 +10,8 @@ class AnalyticsSimulationTests(unittest.TestCase):
             with self.subTest(name=name):
                 events=load_events(simulate(name,at="2026-11-18T10:00:00Z")["events"])
                 findings=[f for e in events for f in analyze_event(e)]
-                self.assertEqual(len(findings),1)
+                expected = 4 if name == "multi-stage-compromise" else 1
+                self.assertEqual(len(findings), expected)
                 self.assertEqual(len(build_incidents(events,findings)),1)
     def test_evidence_hash_and_investigation(self):
         events=load_events(simulate("public-s3-policy",at="2026-11-18T10:00:00Z")["events"])
