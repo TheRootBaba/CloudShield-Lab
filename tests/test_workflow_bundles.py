@@ -25,6 +25,8 @@ class IncidentWorkflowTests(unittest.TestCase):
  def test_transition_validation_and_note_limits(self):
   with self.assertRaises(ValueError):update_workflow(self.db,self.incident_id,{"status":"closed"})
   with self.assertRaises(ValueError):update_workflow(self.db,self.incident_id,{"priority":"urgent"})
+  with self.assertRaises(ValueError):update_workflow(self.db,self.incident_id,{"status":["resolved"]})
+  with self.assertRaises(ValueError):update_workflow(self.db,self.incident_id,{"priority":["P1"]})
   with self.assertRaises(ValueError):add_note(self.db,self.incident_id," ")
   with self.assertRaises(ValueError):add_note(self.db,self.incident_id,"x"*5001)
   note=add_note(self.db,self.incident_id,"Need verify CloudTrail context","analyst-1")
@@ -65,4 +67,11 @@ class EvidenceBundleTests(unittest.TestCase):
   self.assertFalse(result["checked"]["references"])
  def test_malformed_bundle(self):
   self.assertFalse(verify_bundle({})["valid"])
+  bundle=build_bundle(self.db,self.incident_id);bundle["events"]="not-an-array"
+  self.assertFalse(verify_bundle(bundle)["valid"])
+ def test_duplicate_event_records_detected(self):
+  bundle=build_bundle(self.db,self.incident_id);bundle["events"].append(bundle["events"][0])
+  result=verify_bundle(bundle)
+  self.assertFalse(result["valid"])
+  self.assertTrue(any("Duplicate event evidence ID" in e for e in result["errors"]))
 if __name__=="__main__":unittest.main()
