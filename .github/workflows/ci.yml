@@ -25,6 +25,16 @@ jobs:
       - name: Compile Python
         run: python -m compileall -q src tests
 
+  web-assets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check browser JavaScript syntax
+        run: node --check web/app.js
+
   terraform:
     runs-on: ubuntu-latest
     steps:
