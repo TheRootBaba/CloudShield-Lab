@@ -87,9 +87,9 @@ def update_workflow(path,incident_id,changes,actor="analyst"):
    current=_state(db,incident_id)
   if "status" in changes:
    new=changes["status"]
-   if new not in STATUSES: raise ValueError("Invalid status")
+   if not isinstance(new,str) or new not in STATUSES: raise ValueError("Invalid status")
    if new!=current["status"] and new not in TRANSITIONS[current["status"]]: raise ValueError(f"Transition not allowed: {current['status']} -> {new}")
-  if "priority" in changes and changes["priority"] not in PRIORITIES: raise ValueError("Priority must be P1, P2, P3, or P4")
+  if "priority" in changes and (not isinstance(changes["priority"],str) or changes["priority"] not in PRIORITIES): raise ValueError("Priority must be P1, P2, P3, or P4")
   if "assignee" in changes:
    assignee=changes["assignee"]
    if assignee is not None and (not isinstance(assignee,str) or len(assignee.strip())>120): raise ValueError("Assignee must be a string of at most 120 characters or null")
