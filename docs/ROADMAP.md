@@ -53,9 +53,24 @@
 ## Explicit remaining boundaries
 This is still a local-first engineering lab, not a production CSPM/SIEM. Detection coverage is selected and not comprehensive. Simulations are synthetic and do not execute attacks. Incident grouping remains a heuristic; the relationship graph adds actor/account/resource context and temporal edges but is not a complete causal attack-path engine. The AWS collector is one-shot CloudTrail management-event history lookup, not streaming, organization-wide collection or guaranteed complete telemetry. There is no automated remediation, multi-user authentication, multi-tenant database, production deployment hardening or real AWS validation.
 
+## Phase 9 — incident response workflow (implemented in feature branch)
+- [x] Status transitions, priority, assignment and analyst notes per incident.
+- [x] Persisted workflow state and activity history in SQLite.
+- [x] Validate transitions and input lengths; unknown incidents return 404.
+- [x] Workflow controls in incident investigation panel.
+- [x] Workflow unit/API tests.
+
+## Phase 10 — portable evidence bundle & integrity verifier (implemented in feature branch)
+- [x] Export incident, referenced events, findings, workflow state/history and SHA-256 hashes as JSON.
+- [x] Bundle manifest digest and counts.
+- [x] Verify incident/event/finding digests, manifest and timeline-to-event references.
+- [x] Export from incident view; verify bundle from Evidence Vault.
+- [x] Tamper detection, malformed bundle and reference consistency tests.
+- [ ] Digital signatures or external trusted timestamping (not implemented).
+
 ## Next engineering work
 - Add service-specific fixtures, adversarial test cases, ATT&CK mapping and measured false-positive tuning.
 - Validate the collector in an isolated AWS sandbox and document least-privilege IAM policy and cost boundaries.
 - Add organization/account inventory and resource relationship ingestion.
-- Add analyst workflow state, authentication and authorization before any shared or hosted deployment.
+- Add authentication and authorization before any shared or hosted deployment. Current workflow is local-only and analyst labels are user-entered, not authenticated.
 - Consider graph algorithms only after trustworthy asset and identity relationship data is available.

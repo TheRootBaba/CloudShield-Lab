@@ -21,6 +21,9 @@ class ApiIntegrationTests(unittest.TestCase):
     def post(self,path,payload):
         request=Request(self.base+path,data=json.dumps(payload).encode(),headers={"Content-Type":"application/json"},method="POST")
         with urlopen(request,timeout=3) as response: return json.loads(response.read())
+    def patch(self,path,payload):
+        request=Request(self.base+path,data=json.dumps(payload).encode(),headers={"Content-Type":"application/json"},method="PATCH")
+        with urlopen(request,timeout=3) as response: return json.loads(response.read())
     def test_health_and_static_app(self):
         self.assertTrue(self.get("/api/health")["ok"])
         self.assertEqual(self.get("/api/dashboard")["events_total"],0)
@@ -42,6 +45,24 @@ class ApiIntegrationTests(unittest.TestCase):
         events=self.get("/api/events")
         self.assertTrue(all(event["source_format"]=="synthetic" for event in events))
         self.assertTrue(all(len(event["fingerprint"])==64 for event in events))
+    def test_incident_workflow_and_export_verify_endpoints(self):
+        self.post("/api/simulate",{"scenario":"multi-stage-compromise"})
+        incident=self.get("/api/incidents")[0]
+        iid=incident["incident_id"]
+        self.assertEqual("new",incident["workflow"]["status"])
+        self.assertEqual("P1",incident["workflow"]["priority"])
+        self.assertEqual(0,incident["workflow"]["version"])
+        workflow=self.get("/api/incidents/"+iid+"/workflow")
+        self.assertEqual(workflow["state"]["status"],"new")
+        changed=self.patch("/api/incidents/"+iid+"/workflow",{"changes":{"status":"acknowledged","assignee":"triage","priority":"P2"},"actor":"test-analyst"})
+        self.assertEqual(changed["state"]["assignee"],"triage")
+        note=self.post("/api/incidents/"+iid+"/notes",{"note":"Review source events","actor":"test-analyst"})
+        self.assertEqual(note["activity"][-1]["details"]["note"],"Review source events")
+        bundle=self.get("/api/incidents/"+iid+"/export")
+        self.assertEqual(4,len(bundle["events"]))
+        self.assertTrue(self.post("/api/evidence/verify",bundle)["valid"])
+        bundle["events"][0]["event"]["event_name"]="modified"
+        self.assertFalse(self.post("/api/evidence/verify",bundle)["valid"])
     def test_rule_inventory_endpoint(self):
         rules=self.get("/api/rules")
         self.assertGreaterEqual(len(rules),10)
