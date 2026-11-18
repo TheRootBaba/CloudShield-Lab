@@ -25,7 +25,7 @@ CloudShield Lab is a defensive engineering lab. The default runtime binds to 127
 
 ## Controls implemented
 
-- Server binds to loopback by default.
+- Server binds to loopback by default and startup rejects non-loopback bind addresses, preventing accidental unauthenticated LAN/public exposure.
 - JSON request body limit of 2 MiB and content-type validation.
 - Origin validation on POST requests when an Origin header is present.
 - Restrictive browser security headers and escaped text rendering in the UI.
@@ -45,7 +45,7 @@ CloudShield Lab is a defensive engineering lab. The default runtime binds to 127
 - SHA-256 does not prove origin, provide trusted timestamps or prevent an attacker from replacing both data and digest. Detached signatures add signer-key integrity only when the public key is independently trusted; they do not authenticate the original AWS event source.
 - Loopback-only access is not a substitute for authentication if the app is exposed or if other local processes are untrusted.
 - Event-pattern detections can miss unsupported event shapes, services, data-plane activity and contextual attack signals.
-- Actor/account/time correlation and graph edges are investigative hypotheses, not causal proof.
+- Actor/account/time correlation and graph edges are investigative hypotheses, not causal proof. Sequence hypotheses require an explicit correlation signal and are bounded to 24 hours when timestamps are valid.
 - The optional collector reads management-event history only and is not a durable streaming audit pipeline.
 - The optional inventory is partial metadata discovery. A truncated or untruncated response is not a complete organization-wide resource inventory.
 - Fixture evaluation is hand-labelled and cannot establish production detection accuracy.

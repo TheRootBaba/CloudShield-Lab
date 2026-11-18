@@ -26,6 +26,7 @@ CloudShield Lab is a local-first defensive engineering lab. A checked item means
 - [x] Correlate findings by actor/account and time window.
 - [x] Produce deterministic incidents and chronological timelines.
 - [x] Build explainable event, actor, account and resource relationship graphs.
+- [x] Harden incident correlation graph: evidence-backed sequence hypotheses, 24-hour bound, duplicate-ID handling and explicit non-causal semantics (Phase 14 offline hardening).
 - [x] Persist events, findings and incidents in SQLite with idempotent ingestion.
 - [x] Preserve SHA-256 fingerprints and expose event-level evidence retrieval.
 
@@ -93,7 +94,7 @@ CloudShield Lab is a local-first defensive engineering lab. A checked item means
 - [ ] Real isolated-account validation after explicit account and cost approval.
 
 ## Verification snapshot — 18 November 2026
-- 67 Python unit/integration tests pass; Python compilation succeeds.
+- 73 Python unit/integration tests pass after Phase 14 offline hardening; Python compilation succeeds.
 - 26/26 labelled detection fixture cases pass (fixture-only metrics, not production accuracy).
 - Ed25519 signature/key tests pass, including tamper, wrong-key and sidecar overwrite rejection.
 - AWS inventory adapter tests pass with mocked clients; no AWS network calls were made.
@@ -106,9 +107,9 @@ CloudShield Lab is a local-first defensive engineering lab. A checked item means
 - [ ] Real AWS sandbox validation of CloudTrail and inventory using a dedicated account, least-privilege role and approved cost boundary.
 - [ ] Broader inventory (VPCs, subnets, load balancers, RDS, Lambda, KMS, EBS, policies/configuration) and organization-account discovery.
 - [ ] Representative production detection tuning and measured false-positive/false-negative rates.
-- [ ] Authentication, authorization, CSRF protection, secret management, rate limiting, audit logging and deployment hardening before any LAN/hosted exposure.
+- [ ] Authentication, authorization, CSRF protection, secret management, rate limiting, audit logging and deployment hardening before any LAN/hosted exposure. Non-loopback binds are now rejected; the app remains intentionally single-user/local-only.
 - [ ] Independent trusted timestamping or immutable evidence storage.
-- [ ] Full causal attack-path analysis only after trustworthy identity, network and resource relationship data exists.
+- [ ] Full causal attack-path analysis only after trustworthy identity, network and resource relationship data exists. Current Phase 14 graph is correlation-only; see `docs/ATTACK_PATH_CORRELATION.md`.
 
 ## Current safety boundary
 The app binds to 127.0.0.1 by default. It is not a production CSPM/SIEM, does not perform automated remediation, and has no multi-user authentication or tenant isolation. Synthetic scenarios never execute attacks. The live CloudTrail collector and AWS inventory both require explicit opt-in and perform bounded read-only API calls only. No AWS resources are created or modified by either feature.

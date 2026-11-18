@@ -59,7 +59,7 @@ See docs/DETECTION_COVERAGE.md for rule IDs and supported patterns.
 
 - Coverage is selected event-pattern detection, not comprehensive threat detection. Unsupported services, event shapes, data-plane activity and contextual signals can be missed.
 - Synthetic scenarios generate fake CloudTrail-shaped JSON only. They do not execute attacks or call AWS.
-- Incident grouping remains an actor/account/time-window heuristic. The relationship graph makes temporal and resource overlap visible, but does not infer verified causality or a complete attack path.
+- Incident grouping remains an actor/account/time-window heuristic. The relationship graph makes evidence-backed temporal and resource correlations visible, but does not infer verified causality or a complete attack path. Sequence hypotheses are bounded to 24 hours where timestamps are available; see docs/ATTACK_PATH_CORRELATION.md.
 - The AWS collector is optional and reads CloudTrail management event history only. It is not a streaming pipeline, organization-wide deployment, or guaranteed complete audit feed.
 - SHA-256 fingerprints detect content changes relative to a known digest; they are not digital signatures, trusted timestamps, or proof of source authenticity.
 - Analyst workflow per incident: status transitions, priority, assignee, and append-only activity notes.
@@ -68,7 +68,7 @@ See docs/DETECTION_COVERAGE.md for rule IDs and supported patterns.
 
 ## Security and operational defaults
 
-The server binds to 127.0.0.1. Do not expose it to a public network. No authentication is implemented because this is a loopback-only local lab. Do not bind to 0.0.0.0 or put it behind a public reverse proxy without authentication, authorization, CSRF protection and deployment hardening.
+The server binds to 127.0.0.1 and rejects non-loopback bind addresses at startup. Do not expose it to a public network. No authentication is implemented because this is a loopback-only local lab. Hosted or LAN deployment requires authentication, authorization, CSRF protection, rate limiting, audit controls and deployment hardening.
 
 Uploaded JSON is treated as untrusted input. The local API enforces a 2 MiB body limit and sends restrictive browser security headers. No cloud collection, resource creation, remediation or AWS writes happen unless the operator explicitly enables the one-shot collector. Terraform examples remain separate and opt-in.
 
@@ -91,6 +91,10 @@ Install the optional signing dependency with **python -m pip install -e ".[signi
 ## Optional read-only AWS inventory (Phase 13)
 
 Install boto3 with **python -m pip install -e ".[aws]"**, then explicitly set **$env:CLOUDSHIELD_ENABLE_AWS_INVENTORY="1"** before running **cloudshield aws-inventory --regions us-east-1 --max-pages 1 --output artifacts/aws-inventory.json**. The command is disabled by default, accepts only 1–5 explicit regions, and caps pagination. It lists selected resource metadata only; it is not complete organization-wide discovery. Tests use mocked clients and do not contact AWS. Review docs/PHASE_13_AWS_INVENTORY.md and approve the sandbox/cost boundary before a live run.
+
+## Phase 14 offline hardening
+
+Incident graph correlations now require explicit evidence, avoid ambiguous duplicate event IDs, cap valid timestamp gaps at 24 hours and mark sequence edges as non-causal. API startup rejects non-loopback bind addresses while authentication and tenant isolation remain unimplemented. See docs/ATTACK_PATH_CORRELATION.md.
 
 ## Terraform safety
 
