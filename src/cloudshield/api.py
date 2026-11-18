@@ -166,6 +166,8 @@ class Handler(BaseHTTPRequestHandler):
                 mime = "text/html; charset=utf-8" if target.suffix == ".html" else ("text/css; charset=utf-8" if target.suffix == ".css" else "text/javascript; charset=utf-8")
                 return self._send(200, target.read_bytes(), mime)
             return self._send(404, {"error": "Not found"})
+        except KeyError as exc:
+            return self._send(404, {"error": str(exc).strip("'")})
         except (sqlite3.Error, OSError, ValueError) as exc:
             return self._send(500, {"error": str(exc)})
     def do_PATCH(self):
