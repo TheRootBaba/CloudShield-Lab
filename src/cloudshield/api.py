@@ -13,6 +13,8 @@ from .pipeline import analyze_payload
 from .simulator import SCENARIOS, simulate, simulate_all
 from .storage import EvidenceStore
 from .graph import build_attack_path
+from .workflow import ensure_schema, get_workflow, update_workflow, add_note
+from .evidence_bundle import build_bundle, verify_bundle
 
 ROOT = Path(__file__).resolve().parents[2]
 WEB = ROOT / "web"
@@ -34,6 +36,7 @@ def _connect():
 
 def _ensure_store():
     EvidenceStore(DB_PATH)
+    ensure_schema(DB_PATH)
 
 def _rows(table: str, limit: int = 200):
     _ensure_store()
@@ -120,6 +123,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, _dashboard())
             if path == "/api/incidents":
                 return self._send(200, [row["data"] for row in _rows("incidents", 500)])
+            if path.startswith("/api/incidents/") and path.endswith("/workflow"):
+                incident_id=path[len("/api/incidents/"):-len("/workflow")]
+                return self._send(200,get_workflow(DB_PATH,incident_id))
+            if path.startswith("/api/incidents/") and path.endswith("/export"):
+                incident_id=path[len("/api/incidents/"):-len("/export")]
+                return self._send(200,build_bundle(DB_PATH,incident_id))
             if path.startswith("/api/incidents/"):
                 item = _incident(path.rsplit("/", 1)[-1])
                 return self._send(200, item) if item else self._send(404, {"error": "Incident not found"})
@@ -159,9 +168,28 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(404, {"error": "Not found"})
         except (sqlite3.Error, OSError, ValueError) as exc:
             return self._send(500, {"error": str(exc)})
+    def do_PATCH(self):
+        try:
+            body=self._body()
+            if self.path.startswith("/api/incidents/") and self.path.endswith("/workflow"):
+                incident_id=self.path[len("/api/incidents/"):-len("/workflow")]
+                return self._send(200,update_workflow(DB_PATH,incident_id,body.get("changes",body),body.get("actor","analyst")))
+            return self._send(404,{"error":"Not found"})
+        except KeyError as exc:
+            return self._send(404,{"error":str(exc).strip("'")})
+        except ValueError as exc:
+            return self._send(400,{"error":str(exc)})
+        except Exception as exc:
+            return self._send(500,{"error":f"{type(exc).__name__}: {exc}"})
     def do_POST(self):
         try:
             body = self._body()
+            if self.path == "/api/evidence/verify":
+                return self._send(200,verify_bundle(body))
+            if self.path.startswith("/api/incidents/") and self.path.endswith("/notes"):
+                incident_id=self.path[len("/api/incidents/"):-len("/notes")]
+                result=add_note(DB_PATH,incident_id,body.get("note"),body.get("actor","analyst"))
+                return self._send(200,result)
             if self.path == "/api/ingest":
                 result = EvidenceStore(DB_PATH).ingest(body)
                 return self._send(200, {"ok": True, "source": "user-upload", **result})
