@@ -4,6 +4,7 @@ import json
 import os
 import re
 import sqlite3
+from datetime import datetime, timedelta, timezone
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -13,6 +14,8 @@ from .pipeline import analyze_payload
 from .simulator import SCENARIOS, simulate, simulate_all
 from .storage import EvidenceStore
 from .graph import build_attack_path
+from .assets import inventory, relationship_graph
+from .attack_techniques import catalog as technique_catalog
 from .workflow import ensure_schema, get_workflow, update_workflow, add_note
 from .evidence_bundle import build_bundle, verify_bundle
 
@@ -76,6 +79,63 @@ def _dashboard():
         "data_mode": "empty" if not events_total else ("mixed" if len(sources) > 1 else next(iter(sources))),
     }
 
+
+def _analytics(window: str = "24h"):
+    """Aggregate the local evidence store into bounded chart series."""
+    durations = {"1h": timedelta(hours=1), "24h": timedelta(hours=24), "7d": timedelta(days=7)}
+    if window not in {*durations, "all"}:
+        raise ValueError("Unsupported analytics window")
+    _ensure_store()
+    with _connect() as db:
+        event_values = [row[0] for row in db.execute("SELECT json_extract(payload_json, '$.event_time') FROM events").fetchall()]
+        finding_values = [row[0] for row in db.execute("SELECT json_extract(payload_json, '$.event_time') FROM findings").fetchall()]
+        top_rules = db.execute("SELECT json_extract(payload_json, '$.rule_id'), COUNT(*) FROM findings GROUP BY 1 ORDER BY 2 DESC LIMIT 6").fetchall()
+
+    def parse_time(value):
+        if not value:
+            return None
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed.astimezone(timezone.utc)
+        except (TypeError, ValueError):
+            return None
+
+    event_times = [t for t in (parse_time(v) for v in event_values) if t]
+    finding_times = [t for t in (parse_time(v) for v in finding_values) if t]
+    observed = event_times + finding_times
+    now = max([datetime.now(timezone.utc), *observed])
+    if window == "all":
+        start = min(observed) if observed else now - timedelta(hours=24)
+        bucket_count = 16
+    else:
+        start = now - durations[window]
+        bucket_count = 12 if window in {"1h", "24h"} else 14
+    span = max((now - start).total_seconds(), 1)
+    step = span / bucket_count
+    buckets = [{"time": start + timedelta(seconds=step * i), "events": 0, "findings": 0} for i in range(bucket_count)]
+
+    def add_times(values, key):
+        for stamp in values:
+            if stamp < start or stamp > now:
+                continue
+            index = min(bucket_count - 1, int((stamp - start).total_seconds() / step))
+            buckets[index][key] += 1
+
+    add_times(event_times, "events")
+    add_times(finding_times, "findings")
+    label_format = "%H:%M" if window in {"1h", "24h"} else "%b %d"
+    return {
+        "window": window,
+        "events_total": sum(b["events"] for b in buckets),
+        "findings_total": sum(b["findings"] for b in buckets),
+        "series": [{"label": b["time"].strftime(label_format), "events": b["events"], "findings": b["findings"]} for b in buckets],
+        "top_rules": [{"rule": str(rule or "Unknown"), "count": count} for rule, count in top_rules],
+        "scope": "Aggregated across all records in the local SQLite evidence store",
+    }
+
+
 def _incident(incident_id: str):
     _ensure_store()
     with _connect() as db:
@@ -83,7 +143,7 @@ def _incident(incident_id: str):
     if not row:
         return None
     data = json.loads(row[0])
-    return {"incident": data, "evidence_sha256": row[1], "attack_path": build_attack_path(data)}
+    return {"incident": data, "evidence_sha256": row[1], "attack_path": build_attack_path(data), "workflow": get_workflow(DB_PATH, incident_id)}
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "CloudShieldLocal/1.0"
@@ -98,7 +158,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Cache-Control", "no-store")
-        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
+        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
         self.end_headers()
         self.wfile.write(body)
     def _body(self):
@@ -119,6 +179,9 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path == "/api/health":
                 return self._send(200, {"ok": True, "service": "cloudshield-local-api", "database": str(DB_PATH), "aws_collector_enabled": os.environ.get("CLOUDSHIELD_ENABLE_AWS_COLLECTOR") == "1"})
+            if path == "/api/analytics":
+                window = parse_qs(parsed.query).get("window", ["24h"])[0]
+                return self._send(200, _analytics(window))
             if path == "/api/dashboard":
                 return self._send(200, _dashboard())
             if path == "/api/incidents":
@@ -154,8 +217,23 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(404, {"error": "Evidence not found"})
                 return self._send(200, {"event": json.loads(event[0]), "sha256": event[1], "findings": [{"finding": json.loads(r[0]), "sha256": r[1]} for r in findings]})
             if path == "/api/rules":
-                from .detector import RULE_CATALOG
-                return self._send(200, RULE_CATALOG)
+                return self._send(200, technique_catalog())
+            if path == "/api/assets":
+                _ensure_store()
+                with _connect() as db:
+                    event_rows = db.execute("SELECT payload_json FROM events ORDER BY event_time,event_id").fetchall()
+                    finding_rows = db.execute("SELECT payload_json FROM findings").fetchall()
+                assets = inventory([json.loads(r[0]) for r in event_rows], [json.loads(r[0]) for r in finding_rows])
+                return self._send(200, assets)
+            if path == "/api/asset-graph":
+                _ensure_store()
+                with _connect() as db:
+                    event_rows = db.execute("SELECT payload_json FROM events ORDER BY event_time,event_id").fetchall()
+                    finding_rows = db.execute("SELECT payload_json FROM findings").fetchall()
+                events = [json.loads(r[0]) for r in event_rows]
+                findings = [json.loads(r[0]) for r in finding_rows]
+                assets = inventory(events, findings)
+                return self._send(200, relationship_graph(events, assets))
             if path == "/api/collector/status":
                 try:
                     import boto3
@@ -171,12 +249,15 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(403, "Forbidden", "text/plain; charset=utf-8")
                 if not target.is_file():
                     return self._send(404, "Not found", "text/plain; charset=utf-8")
-                mime = "text/html; charset=utf-8" if target.suffix == ".html" else ("text/css; charset=utf-8" if target.suffix == ".css" else "text/javascript; charset=utf-8")
+                mime_types = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".svg": "image/svg+xml", ".woff": "font/woff", ".woff2": "font/woff2", ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp", ".json": "application/json; charset=utf-8"}
+                mime = mime_types.get(target.suffix.lower(), "application/octet-stream")
                 return self._send(200, target.read_bytes(), mime)
             return self._send(404, {"error": "Not found"})
         except KeyError as exc:
             return self._send(404, {"error": str(exc).strip("'")})
-        except (sqlite3.Error, OSError, ValueError) as exc:
+        except ValueError as exc:
+            return self._send(400, {"error": str(exc)})
+        except (sqlite3.Error, OSError) as exc:
             return self._send(500, {"error": str(exc)})
     def do_PATCH(self):
         try:
