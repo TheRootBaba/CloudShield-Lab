@@ -10,6 +10,7 @@ def digest(value): return hashlib.sha256(canonical(value).encode("utf-8")).hexdi
 
 def build_bundle(path,incident_id):
  ensure_schema(path)
+ workflow=get_workflow(path,incident_id)
  db=sqlite3.connect(str(path));db.row_factory=sqlite3.Row
  try:
   inc=db.execute("SELECT payload_json,payload_sha256 FROM incidents WHERE incident_id=?",(incident_id,)).fetchone()
@@ -22,7 +23,7 @@ def build_bundle(path,incident_id):
    if e: events.append({"event":json.loads(e["payload_json"]),"sha256":e["payload_sha256"]})
    rows=db.execute("SELECT payload_json,payload_sha256 FROM findings WHERE event_id=? ORDER BY rule_id",(eid,)).fetchall()
    findings.extend({"finding":json.loads(r["payload_json"]),"sha256":r["payload_sha256"]} for r in rows)
-  activity=get_workflow(path,incident_id)
+  activity=workflow
   body={"bundle_version":"1.0","generated_at":datetime.now(timezone.utc).isoformat(timespec="seconds"),"incident":{"data":incident,"sha256":inc["payload_sha256"]},"workflow":activity,"events":events,"findings":findings}
   body["manifest"]={"hash_algorithm":"SHA-256","bundle_sha256":digest(body),"event_count":len(events),"finding_count":len(findings),"activity_count":len(activity["activity"])}
   return body
