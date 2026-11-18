@@ -48,10 +48,13 @@ def verify_bundle(bundle):
  if not isinstance(events,list):errors.append("Events must be an array");events=[]
  if not isinstance(findings,list):errors.append("Findings must be an array");findings=[]
  event_ids=set()
+ event_count_ids=set()
  for item in events:
   if not isinstance(item,dict) or not isinstance(item.get("event"),dict):errors.append("Malformed event evidence item");continue
   event=item["event"];ok=digest(event)==item.get("sha256");checks["events"]+=1
-  if event.get("event_id"):event_ids.add(str(event["event_id"]))
+  if event.get("event_id"):
+   eid=str(event["event_id"]);event_ids.add(eid);event_count_ids.add(eid)
+   if len(event_ids)!=len(event_count_ids):errors.append("Duplicate event evidence ID: "+eid)
   if not ok:errors.append("Event digest mismatch: "+str(event.get("event_id","unknown")))
  for item in findings:
   if not isinstance(item,dict) or not isinstance(item.get("finding"),dict):errors.append("Malformed finding evidence item");continue
