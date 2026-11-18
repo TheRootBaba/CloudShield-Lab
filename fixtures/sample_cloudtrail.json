@@ -1,0 +1,45 @@
+[
+  {
+    "eventID": "demo-iam-001",
+    "eventTime": "2026-11-18T09:00:00Z",
+    "eventSource": "iam.amazonaws.com",
+    "eventName": "PutRolePolicy",
+    "sourceIPAddress": "203.0.113.10",
+    "userIdentity": {"type": "IAMUser", "arn": "arn:aws:iam::111122223333:user/demo-operator"},
+    "requestParameters": {"roleName": "demo-app-role", "policyName": "temporary-admin-policy"}
+  },
+  {
+    "eventID": "demo-s3-001",
+    "eventTime": "2026-11-18T09:05:00Z",
+    "eventSource": "s3.amazonaws.com",
+    "eventName": "PutBucketPolicy",
+    "sourceIPAddress": "203.0.113.11",
+    "userIdentity": {"type": "AssumedRole", "arn": "arn:aws:sts::111122223333:assumed-role/demo-role/session"},
+    "requestParameters": {
+      "bucketName": "demo-public-test-bucket",
+      "policyDocument": {
+        "Version": "2012-10-17",
+        "Statement": [{"Effect": "Allow", "Principal": "*", "Action": "s3:GetObject", "Resource": "arn:aws:s3:::demo-public-test-bucket/*"}]
+      }
+    }
+  },
+  {
+    "eventID": "demo-ec2-001",
+    "eventTime": "2026-11-18T09:10:00Z",
+    "eventSource": "ec2.amazonaws.com",
+    "eventName": "AuthorizeSecurityGroupIngress",
+    "sourceIPAddress": "203.0.113.12",
+    "userIdentity": {"type": "IAMUser", "arn": "arn:aws:iam::111122223333:user/demo-operator"},
+    "requestParameters": {
+      "groupId": "sg-demo123",
+      "ipPermissions": [{
+        "ipProtocol": "tcp",
+        "fromPort": 22,
+        "toPort": 22,
+        "ipRanges": [{"cidrIp": "0.0.0.0/0"}]
+      }]
+    }
+  }
+]
+
+[executed on device: babam-desktop (5b84c11b-7f66-494f-9e6d-0dd5f16de169)]

@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cloudshield-lab"
+version = "0.2.0"
+description = "Local-first cloud security verification and attack-path validation lab"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+dependencies = []
+
+[project.scripts]
+cloudshield = "cloudshield.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[executed on device: babam-desktop (5b84c11b-7f66-494f-9e6d-0dd5f16de169)]

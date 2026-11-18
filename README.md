@@ -5,7 +5,7 @@
 CloudShield is an educational engineering lab. It normalizes CloudTrail-style events, detects selected risky changes, generates reproducible synthetic attack scenarios, correlates findings, and produces evidence-backed investigation reports.
 
 ## Implemented workflows
-- CloudTrail-shaped event normalization with account, region, actor, resource identifiers and source format.
+- CloudTrail and AWS Security Hub finding normalization with account, region, actor, resource identifiers and source format.
 - Explainable detection for IAM policy mutations, public S3 bucket policies, and internet-exposed administrative ingress.
 - Offline synthetic attack scenarios. The simulator makes zero cloud API calls.
 - Incident grouping by actor/account and configurable time window, ordered timelines and stable incident identifiers.
@@ -50,3 +50,5 @@ Cloud resources can incur charges, including CloudTrail and Security Hub. Review
 - `docs/`: architecture, roadmap and threat model.
 
 MIT License.
+
+[executed on device: babam-desktop (5b84c11b-7f66-494f-9e6d-0dd5f16de169)]
