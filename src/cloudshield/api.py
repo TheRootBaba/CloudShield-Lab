@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import ipaddress
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from contextlib import contextmanager
@@ -314,8 +315,22 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as exc:
             return self._send(500, {"error": f"{type(exc).__name__}: {exc}"})
 
+def validate_bind_host(host: str) -> None:
+    """Prevent accidental LAN/public exposure before auth and tenant isolation exist."""
+    try:
+        is_loopback = ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        is_loopback = False
+    if not is_loopback:
+        raise RuntimeError(
+            "CloudShield is a single-user local lab and may bind only to a loopback IP. "
+            "Do not expose it to a LAN or public network; authentication and tenant isolation are not implemented."
+        )
+
+
 def main():
     host = os.environ.get("CLOUDSHIELD_HOST", "127.0.0.1")
+    validate_bind_host(host)
     port = int(os.environ.get("CLOUDSHIELD_PORT", "8765"))
     server = ThreadingHTTPServer((host, port), Handler)
     print(f"CloudShield Command Center: http://{host}:{port}")

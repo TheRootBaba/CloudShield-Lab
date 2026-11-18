@@ -24,6 +24,16 @@ class ApiIntegrationTests(unittest.TestCase):
     def patch(self,path,payload):
         request=Request(self.base+path,data=json.dumps(payload).encode(),headers={"Content-Type":"application/json"},method="PATCH")
         with urlopen(request,timeout=3) as response: return json.loads(response.read())
+    def test_bind_host_must_be_loopback(self):
+        api.validate_bind_host("127.0.0.1")
+        api.validate_bind_host("::1")
+        with self.assertRaises(RuntimeError):
+            api.validate_bind_host("0.0.0.0")
+        with self.assertRaises(RuntimeError):
+            api.validate_bind_host("192.0.2.10")
+        with self.assertRaises(RuntimeError):
+            api.validate_bind_host("localhost")
+
     def test_health_and_static_app(self):
         self.assertTrue(self.get("/api/health")["ok"])
         self.assertEqual(self.get("/api/dashboard")["events_total"],0)
