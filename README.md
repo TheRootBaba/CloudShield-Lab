@@ -14,6 +14,9 @@ CloudShield is an engineering lab and portfolio project. It is not a production 
 - Incident grouping by actor/account and time window, with a graph view of observed time/resource relationships. Graph edges are hypotheses, not proof of causation.
 - SHA-256 evidence fingerprints for canonical stored event and incident payloads.
 - Optional, explicit, read-only AWS CloudTrail LookupEvents collection. Disabled by default.
+- Detection validation suite with curated MITRE ATT&CK technique references, positive/negative/adversarial cases and mapping-integrity checks; real-world detection accuracy is not measured.
+- Event-derived AWS asset inventory and relationship graph, including observed actors, accounts, regions, timestamps, event counts and finding associations; this is not authoritative cloud-resource enumeration.
+- White-first responsive React command center with analytics, detection library, observed assets and relationship views.
 
 ## Quick start (Windows PowerShell)
 
@@ -79,7 +82,7 @@ Examples remain under terraform/secure and terraform/vulnerable. Both default to
 
 ## Tests
 
-Run **python -m compileall -q src tests** and **python -m unittest discover -s tests -v**.
+Run **python -m compileall -q src tests** and **python -m unittest discover -s tests -v**. For the React command center, run **npm ci** and **npm run build**.
 
 The suite covers normalization, selected detections, simulation, incident grouping, graph semantics, API integration, SQLite persistence and Terraform safety fixtures.
 

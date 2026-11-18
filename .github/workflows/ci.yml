@@ -32,8 +32,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Check browser JavaScript syntax
-        run: node --check web/app.js
+      - name: Install web dependencies
+        run: npm ci
+      - name: Build React command center
+        run: npm run build
 
   terraform:
     runs-on: ubuntu-latest

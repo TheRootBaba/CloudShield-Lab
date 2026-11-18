@@ -2,7 +2,10 @@
 
 ## Runtime
 
-- cloudshield.api serves the static command center and local JSON API using Python standard-library HTTP components.
+- cloudshield.api serves the Vite-built React command center from web/ and the local JSON API using Python standard-library HTTP components.
+- App.jsx and styles.css implement the responsive React interface; Vite builds hashed JavaScript, CSS and font assets into web/.
+- assets.py derives an observed-resource inventory and contextual relationship graph from stored event and finding evidence.
+- attack_techniques.py attaches conservative, curated MITRE ATT&CK references to selected detection rules; mappings are coverage hypotheses, not confirmation of technique execution.
 - pipeline.py normalizes events, applies explainable detection rules and groups findings into incidents.
 - storage.py persists normalized events, findings and incidents transactionally in SQLite.
 - graph.py creates a relationship graph with finding/event, actor, account and resource nodes. Observed resource references and temporal adjacency edges are labelled with their evidence.
@@ -14,15 +17,23 @@
 |---|---|---|
 | GET | /api/health | Service and collector capability status |
 | GET | /api/dashboard | Stored evidence summary and recent records |
+| GET | /api/analytics?window=24h | Bounded event/finding time-series aggregates and top rules |
+| GET | /api/assets | Event-derived observed resource inventory |
+| GET | /api/asset-graph | Resource relationship graph derived from observed evidence |
 | GET | /api/incidents | Incident list |
 | GET | /api/incidents/{id} | Incident, digest and relationship graph |
 | GET | /api/findings | Stored findings |
 | GET | /api/events | Normalized stored events and evidence fingerprints |
 | GET | /api/evidence/{event_id} | Event and associated finding digests |
-| GET | /api/rules | Rule inventory |
+| GET | /api/rules | Rule inventory with curated ATT&CK references |
+| GET | /api/incidents/{id}/workflow | Incident workflow state and activity history |
+| GET | /api/incidents/{id}/export | Portable incident evidence bundle |
 | GET | /api/collector/status | AWS SDK and local credential-source status |
 | POST | /api/ingest | Analyze and persist supplied JSON |
 | POST | /api/simulate | Generate and persist explicitly synthetic scenario telemetry |
+| POST | /api/incidents/{id}/notes | Append an analyst note to local workflow history |
+| POST | /api/evidence/verify | Verify a portable evidence bundle's hashes and references |
+| PATCH | /api/incidents/{id}/workflow | Update validated workflow state, priority or assignee |
 | POST | /api/collector/aws | Explicit one-shot CloudTrail lookup; requires opt-in environment flag |
 
 The API binds to loopback by default and has no user authentication. It is intended for a single-user local lab only. POST requests require JSON and same-origin requests when an Origin header is supplied.

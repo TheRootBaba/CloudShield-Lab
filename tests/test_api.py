@@ -1,4 +1,4 @@
-import json, tempfile, threading, unittest
+﻿import json, tempfile, threading, unittest
 from pathlib import Path
 from urllib.request import Request, urlopen
 from http.server import ThreadingHTTPServer
@@ -63,6 +63,21 @@ class ApiIntegrationTests(unittest.TestCase):
         self.assertTrue(self.post("/api/evidence/verify",bundle)["valid"])
         bundle["events"][0]["event"]["event_name"]="modified"
         self.assertFalse(self.post("/api/evidence/verify",bundle)["valid"])
+    def test_analytics_asset_inventory_and_attack_mapping_endpoints(self):
+        self.post("/api/simulate", {"scenario": "all"})
+        analytics = self.get("/api/analytics?window=24h")
+        self.assertEqual(7, analytics["events_total"])
+        self.assertEqual(7, analytics["findings_total"])
+        self.assertEqual(12, len(analytics["series"]))
+        assets = self.get("/api/assets")
+        self.assertGreaterEqual(len(assets), 1)
+        self.assertTrue(assets)
+        graph = self.get("/api/asset-graph")
+        self.assertTrue(graph["nodes"])
+        self.assertIn("edges", graph)
+        rules = self.get("/api/rules")
+        self.assertTrue(any(rule["attack_techniques"] for rule in rules))
+
     def test_rule_inventory_endpoint(self):
         rules=self.get("/api/rules")
         self.assertGreaterEqual(len(rules),10)

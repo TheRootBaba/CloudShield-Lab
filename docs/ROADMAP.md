@@ -40,27 +40,38 @@
 - [x] Collector disabled by default and uses the standard AWS credential chain.
 - [ ] Validate against a real, isolated AWS account with least-privilege permissions and explicit cost approval.
 
+## Phase 7 - detection validation and ATT&CK alignment
+- [x] Curated ATT&CK references for selected detection rules and exposed metadata.
+- [x] Positive, negative, adversarial and mapping-integrity tests.
+- [ ] Real-world false-positive / false-negative rates (not measured).
+
+## Phase 8 - observed asset inventory
+- [x] Event-derived inventory and common AWS resource classification.
+- [x] First/last observed, actor/account/region, event counts and finding associations.
+- [x] Inventory and relationship graph API and React view.
+- [x] Tests for empty data, findings and graph semantics.
+- [ ] Live authoritative enumeration (not implemented).
+
 ## Verification completed locally
-- 34 Python unit/integration tests pass.
+- 54 Python unit/integration tests pass on the integration branch.
 - Python compilation succeeds.
-- Browser JavaScript syntax check succeeds with Node.
-- API integration tests cover empty startup, static assets, simulation, source provenance, graph and rule inventory.
-- Terraform formatting and both root validations are checked locally.
-- Local HTTP smoke test returned healthy API, empty dashboard, and static HTML/JS assets.
-- A four-event synthetic sequence was ingested successfully into a separate smoke-test database.
-- No AWS resources were created or modified. Live AWS collection was not run.
+- npm ci and the Vite production build succeed; the generated dashboard serves from the local API.
+- Desktop and 390px mobile browser smoke tests pass across navigation, asset inventory, incident drawer, workflow updates, analyst notes and evidence export/verification; no browser console errors were observed.
+- Terraform formatting and validation pass for both secure and vulnerable example roots.
+- npm audit --omit=dev reports zero production dependency vulnerabilities. The full development dependency tree reports five high-severity picomatch advisories; the available forced fix downgrades Vite across a breaking version boundary and was not applied.
+- No AWS resources were created or modified; the live collector was not run.
 
 ## Explicit remaining boundaries
 This is still a local-first engineering lab, not a production CSPM/SIEM. Detection coverage is selected and not comprehensive. Simulations are synthetic and do not execute attacks. Incident grouping remains a heuristic; the relationship graph adds actor/account/resource context and temporal edges but is not a complete causal attack-path engine. The AWS collector is one-shot CloudTrail management-event history lookup, not streaming, organization-wide collection or guaranteed complete telemetry. There is no automated remediation, multi-user authentication, multi-tenant database, production deployment hardening or real AWS validation.
 
-## Phase 9 — incident response workflow (implemented in feature branch)
+## Phase 9 — incident response workflow
 - [x] Status transitions, priority, assignment and analyst notes per incident.
 - [x] Persisted workflow state and activity history in SQLite.
 - [x] Validate transitions and input lengths; unknown incidents return 404.
 - [x] Workflow controls in incident investigation panel.
 - [x] Workflow unit/API tests.
 
-## Phase 10 — portable evidence bundle & integrity verifier (implemented in feature branch)
+## Phase 10 — portable evidence bundle & integrity verifier
 - [x] Export incident, referenced events, findings, workflow state/history and SHA-256 hashes as JSON.
 - [x] Bundle manifest digest and counts.
 - [x] Verify incident/event/finding digests, manifest and timeline-to-event references.
@@ -69,8 +80,8 @@ This is still a local-first engineering lab, not a production CSPM/SIEM. Detecti
 - [ ] Digital signatures or external trusted timestamping (not implemented).
 
 ## Next engineering work
-- Add service-specific fixtures, adversarial test cases, ATT&CK mapping and measured false-positive tuning.
+- Measure false-positive/false-negative rates using representative, labelled telemetry; curated ATT&CK references are implemented.
 - Validate the collector in an isolated AWS sandbox and document least-privilege IAM policy and cost boundaries.
-- Add organization/account inventory and resource relationship ingestion.
+- Add authoritative organization/account inventory only with explicit read-only scope and evidence provenance; current inventory remains event-derived.
 - Add authentication and authorization before any shared or hosted deployment. Current workflow is local-only and analyst labels are user-entered, not authenticated.
 - Consider graph algorithms only after trustworthy asset and identity relationship data is available.
