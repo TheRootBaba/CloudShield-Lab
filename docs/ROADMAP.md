@@ -1,4 +1,6 @@
-# Delivery status — command center milestone
+# Delivery roadmap and progress
+
+CloudShield Lab is a local-first defensive engineering lab. A checked item means the implementation and local automated checks exist; it does not imply production readiness or live-cloud validation.
 
 ## Phase 1 — detection engine
 - [x] Normalize CloudTrail records and Security Hub finding envelopes.
@@ -28,11 +30,11 @@
 - [x] Preserve SHA-256 fingerprints and expose event-level evidence retrieval.
 
 ## Phase 5 — analyst command center
-- [x] Responsive dark security operations UI.
+- [x] Responsive React security command center.
 - [x] Overview, incidents, detections, attack paths, evidence vault, data sources and rule library views.
 - [x] Search/filter, incident drill-down, evidence inspection, JSON import and simulation controls.
-- [x] Local HTTP API backed by the existing detection and evidence domain logic.
-- [x] Empty-state behavior and no fabricated metrics.
+- [x] Local HTTP API backed by the detection and evidence domain logic.
+- [x] White-first responsive visual system, desktop/mobile navigation and event-derived analytics.
 
 ## Phase 6 — optional live AWS ingestion
 - [x] Opt-in one-shot read-only CloudTrail LookupEvents adapter.
@@ -40,29 +42,18 @@
 - [x] Collector disabled by default and uses the standard AWS credential chain.
 - [ ] Validate against a real, isolated AWS account with least-privilege permissions and explicit cost approval.
 
-## Phase 7 - detection validation and ATT&CK alignment
-- [x] Curated ATT&CK references for selected detection rules and exposed metadata.
+## Phase 7 — detection validation and ATT&CK alignment
+- [x] Curated ATT&CK references for selected detection rules.
 - [x] Positive, negative, adversarial and mapping-integrity tests.
-- [ ] Real-world false-positive / false-negative rates (not measured).
+- [x] Deterministic labelled fixture corpus and per-rule precision/recall/specificity/F1 calculation (Phase 11).
+- [ ] Production false-positive / false-negative rates from representative labelled telemetry.
 
-## Phase 8 - observed asset inventory
+## Phase 8 — observed asset inventory
 - [x] Event-derived inventory and common AWS resource classification.
 - [x] First/last observed, actor/account/region, event counts and finding associations.
 - [x] Inventory and relationship graph API and React view.
-- [x] Tests for empty data, findings and graph semantics.
-- [ ] Live authoritative enumeration (not implemented).
-
-## Verification completed locally
-- 54 Python unit/integration tests pass on the integration branch.
-- Python compilation succeeds.
-- npm ci and the Vite production build succeed; the generated dashboard serves from the local API.
-- Desktop and 390px mobile browser smoke tests pass across navigation, asset inventory, incident drawer, workflow updates, analyst notes and evidence export/verification; no browser console errors were observed.
-- Terraform formatting and validation pass for both secure and vulnerable example roots.
-- npm audit --omit=dev reports zero production dependency vulnerabilities. The full development dependency tree reports five high-severity picomatch advisories; the available forced fix downgrades Vite across a breaking version boundary and was not applied.
-- No AWS resources were created or modified; the live collector was not run.
-
-## Explicit remaining boundaries
-This is still a local-first engineering lab, not a production CSPM/SIEM. Detection coverage is selected and not comprehensive. Simulations are synthetic and do not execute attacks. Incident grouping remains a heuristic; the relationship graph adds actor/account/resource context and temporal edges but is not a complete causal attack-path engine. The AWS collector is one-shot CloudTrail management-event history lookup, not streaming, organization-wide collection or guaranteed complete telemetry. There is no automated remediation, multi-user authentication, multi-tenant database, production deployment hardening or real AWS validation.
+- [x] Optional bounded read-only live inventory for selected EC2, security-group, S3 bucket-name and IAM principal metadata (Phase 13).
+- [ ] Full authoritative inventory across all AWS services and organization accounts.
 
 ## Phase 9 — incident response workflow
 - [x] Status transitions, priority, assignment and analyst notes per incident.
@@ -71,17 +62,53 @@ This is still a local-first engineering lab, not a production CSPM/SIEM. Detecti
 - [x] Workflow controls in incident investigation panel.
 - [x] Workflow unit/API tests.
 
-## Phase 10 — portable evidence bundle & integrity verifier
+## Phase 10 — portable evidence bundle and integrity verifier
 - [x] Export incident, referenced events, findings, workflow state/history and SHA-256 hashes as JSON.
 - [x] Bundle manifest digest and counts.
 - [x] Verify incident/event/finding digests, manifest and timeline-to-event references.
 - [x] Export from incident view; verify bundle from Evidence Vault.
 - [x] Tamper detection, malformed bundle and reference consistency tests.
-- [ ] Digital signatures or external trusted timestamping (not implemented).
+- [x] Optional detached Ed25519 signatures with encrypted private keys and external public-key verification (Phase 12).
+- [ ] Trusted timestamping or immutable external chain of custody.
 
-## Next engineering work
-- Measure false-positive/false-negative rates using representative, labelled telemetry; curated ATT&CK references are implemented.
-- Validate the collector in an isolated AWS sandbox and document least-privilege IAM policy and cost boundaries.
-- Add authoritative organization/account inventory only with explicit read-only scope and evidence provenance; current inventory remains event-derived.
-- Add authentication and authorization before any shared or hosted deployment. Current workflow is local-only and analyst labels are user-entered, not authenticated.
-- Consider graph algorithms only after trustworthy asset and identity relationship data is available.
+## Phase 11 — detection evaluation harness
+- [x] Hand-labelled positive and negative event corpus covering all 13 catalogued rules.
+- [x] Per-rule and micro-averaged confusion counts, precision, recall, specificity and F1.
+- [x] CLI report generation and regression tests.
+- [x] Clearly label fixture-only metrics; no production accuracy claims.
+
+## Phase 12 — signed evidence bundles
+- [x] Encrypted Ed25519 private-key generation and public-key export.
+- [x] Refuse to sign invalid evidence bundles.
+- [x] Detached signature creation and verification against an independently supplied public key.
+- [x] Reject tampering, wrong keys and malformed signatures.
+- [x] Optional dependency isolated in the signing extra.
+
+## Phase 13 — bounded AWS inventory
+- [x] Explicit opt-in only; disabled by default.
+- [x] Read-only EC2 instances/security groups, S3 bucket names, IAM roles/users.
+- [x] Explicit region list, maximum five regions, maximum two pages per operation.
+- [x] Report API-call count, truncation and exact IAM permissions.
+- [x] Offline mocked tests; no AWS credentials or API calls used in validation.
+- [ ] Real isolated-account validation after explicit account and cost approval.
+
+## Verification snapshot — 18 November 2026
+- 67 Python unit/integration tests pass; Python compilation succeeds.
+- 26/26 labelled detection fixture cases pass (fixture-only metrics, not production accuracy).
+- Ed25519 signature/key tests pass, including tamper, wrong-key and sidecar overwrite rejection.
+- AWS inventory adapter tests pass with mocked clients; no AWS network calls were made.
+- Vite production build passes with lazy-loaded chart chunking: main 407.27 kB and overview 471.22 kB (gzip 130.14 kB and 132.19 kB); no chunk-size warning.
+- Desktop (1440px) and mobile (390px) browser smoke tests pass; no console/page errors. Incident workflow and evidence export/verification smoke tests pass.
+- Terraform formatting and both root validations pass.
+- npm audit --omit=dev reports 0 production vulnerabilities. The full development audit still returns five high findings associated with picomatch; the GitHub advisory page now marks the underlying advisory withdrawn. No forced downgrade was applied.
+
+## Remaining gates — not safe to mark complete without external prerequisites
+- [ ] Real AWS sandbox validation of CloudTrail and inventory using a dedicated account, least-privilege role and approved cost boundary.
+- [ ] Broader inventory (VPCs, subnets, load balancers, RDS, Lambda, KMS, EBS, policies/configuration) and organization-account discovery.
+- [ ] Representative production detection tuning and measured false-positive/false-negative rates.
+- [ ] Authentication, authorization, CSRF protection, secret management, rate limiting, audit logging and deployment hardening before any LAN/hosted exposure.
+- [ ] Independent trusted timestamping or immutable evidence storage.
+- [ ] Full causal attack-path analysis only after trustworthy identity, network and resource relationship data exists.
+
+## Current safety boundary
+The app binds to 127.0.0.1 by default. It is not a production CSPM/SIEM, does not perform automated remediation, and has no multi-user authentication or tenant isolation. Synthetic scenarios never execute attacks. The live CloudTrail collector and AWS inventory both require explicit opt-in and perform bounded read-only API calls only. No AWS resources are created or modified by either feature.

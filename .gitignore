@@ -21,3 +21,8 @@ Thumbs.db
 node_modules/
 .vite/
 npm-debug.log*
+*-private.pem
+*_private.pem
+*.key
+*.p12
+*.pfx
