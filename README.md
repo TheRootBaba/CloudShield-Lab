@@ -17,6 +17,9 @@ CloudShield is an engineering lab and portfolio project. It is not a production 
 - Detection validation suite with curated MITRE ATT&CK technique references, positive/negative/adversarial cases and mapping-integrity checks; real-world detection accuracy is not measured.
 - Event-derived AWS asset inventory and relationship graph, including observed actors, accounts, regions, timestamps, event counts and finding associations; this is not authoritative cloud-resource enumeration.
 - White-first responsive React command center with analytics, detection library, observed assets and relationship views.
+- A labelled detection evaluation harness with per-rule metrics; fixture metrics are not production accuracy claims.
+- Optional Ed25519 signatures for portable incident evidence bundles, using encrypted private keys and detached signatures.
+- Optional bounded read-only AWS inventory for selected EC2, security-group, S3 bucket-name and IAM metadata; disabled unless explicitly enabled.
 
 ## Quick start (Windows PowerShell)
 
@@ -32,6 +35,7 @@ CLI examples:
 - **cloudshield analyze fixtures/sample_cloudtrail.json**
 - **cloudshield simulate multi-stage-compromise --output artifacts/multi-stage.json**
 - **cloudshield store artifacts/multi-stage.json**
+- **cloudshield evaluate fixtures/detection_evaluation.json**
 - **cloudshield timeline**
 
 ## Import formats
@@ -76,7 +80,19 @@ Uploaded JSON is treated as untrusted input. The local API enforces a 2 MiB body
 - API: `GET /api/incidents/{id}/workflow`, `PATCH /api/incidents/{id}/workflow`, `POST /api/incidents/{id}/notes`, `GET /api/incidents/{id}/export`, and `POST /api/evidence/verify`.
 - Integrity checks validate incident/event/finding digests, manifest digest and event references. This is not cryptographic authenticity or trusted chain of custody.
 
-See docs/PHASE_9_INCIDENT_RESPONSE.md and docs/PHASE_10_EVIDENCE_BUNDLES.md for implementation details and boundaries.\n\n## Terraform safety
+See docs/PHASE_9_INCIDENT_RESPONSE.md and docs/PHASE_10_EVIDENCE_BUNDLES.md for implementation details and boundaries.\n\n## Detection evaluation (Phase 11)
+
+Run **cloudshield evaluate fixtures/detection_evaluation.json** to calculate per-rule and micro-averaged precision, recall, specificity and F1. The included 26-case labelled corpus currently passes 26/26 cases. These are deterministic fixture results only, not estimates of production false-positive or false-negative rates. See docs/PHASE_11_DETECTION_EVALUATION.md.
+
+## Signed evidence bundles (Phase 12)
+
+Install the optional signing dependency with **python -m pip install -e ".[signing]"**. Generate an encrypted Ed25519 key pair with **cloudshield keygen --private-key artifacts/cloudshield-signing-private.pem --public-key artifacts/cloudshield-signing-public.pem**. Then sign and verify a valid exported bundle using **cloudshield sign-bundle** and **cloudshield verify-signature**. The public key must be trusted independently; a signature does not prove the source telemetry is truthful or provide trusted timestamping. See docs/PHASE_12_SIGNED_EVIDENCE.md.
+
+## Optional read-only AWS inventory (Phase 13)
+
+Install boto3 with **python -m pip install -e ".[aws]"**, then explicitly set **$env:CLOUDSHIELD_ENABLE_AWS_INVENTORY="1"** before running **cloudshield aws-inventory --regions us-east-1 --max-pages 1 --output artifacts/aws-inventory.json**. The command is disabled by default, accepts only 1–5 explicit regions, and caps pagination. It lists selected resource metadata only; it is not complete organization-wide discovery. Tests use mocked clients and do not contact AWS. Review docs/PHASE_13_AWS_INVENTORY.md and approve the sandbox/cost boundary before a live run.
+
+## Terraform safety
 
 Examples remain under terraform/secure and terraform/vulnerable. Both default to no resource creation and require explicit opt-in. The vulnerable root intentionally creates insecure training fixtures. Never apply it to a production or shared account. Review cost, region, IAM permissions and teardown before any AWS apply.
 
@@ -84,6 +100,6 @@ Examples remain under terraform/secure and terraform/vulnerable. Both default to
 
 Run **python -m compileall -q src tests** and **python -m unittest discover -s tests -v**. For the React command center, run **npm ci** and **npm run build**.
 
-The suite covers normalization, selected detections, simulation, incident grouping, graph semantics, API integration, SQLite persistence and Terraform safety fixtures.
+The suite covers normalization, selected detections, simulation, detection evaluation, signed evidence, mocked AWS inventory, incident grouping, graph semantics, API integration, SQLite persistence and Terraform safety fixtures.
 
 MIT License.

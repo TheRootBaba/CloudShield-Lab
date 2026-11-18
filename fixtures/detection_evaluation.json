@@ -1,0 +1,466 @@
+{
+  "corpus_version": "1.0",
+  "description": "Hand-labelled representative event-shape fixtures for deterministic regression evaluation; not production telemetry.",
+  "cases": [
+    {
+      "id": "positive-iam-policy",
+      "label": "positive",
+      "event": {
+        "eventSource": "iam.amazonaws.com",
+        "eventName": "PutRolePolicy",
+        "requestParameters": {
+          "roleName": "AppRole"
+        }
+      },
+      "expected_rule_ids": [
+        "CS-IAM-001"
+      ]
+    },
+    {
+      "id": "negative-iam-unrelated",
+      "label": "negative",
+      "event": {
+        "eventSource": "iam.amazonaws.com",
+        "eventName": "GetRole",
+        "requestParameters": {
+          "roleName": "AppRole"
+        }
+      },
+      "expected_rule_ids": []
+    },
+    {
+      "id": "positive-iam-key",
+      "label": "positive",
+      "event": {
+        "eventSource": "iam.amazonaws.com",
+        "eventName": "CreateAccessKey",
+        "requestParameters": {
+          "userName": "analyst"
+        }
+      },
+      "expected_rule_ids": [
+        "CS-IAM-002"
+      ]
+    },
+    {
+      "id": "negative-iam-key-delete",
+      "label": "negative",
+      "event": {
+        "eventSource": "iam.amazonaws.com",
+        "eventName": "DeleteAccessKey",
+        "requestParameters": {
+          "userName": "analyst"
+        }
+      },
+      "expected_rule_ids": []
+    },
+    {
+      "id": "positive-root-login",
+      "label": "positive",
+      "event": {
+        "eventSource": "signin.amazonaws.com",
+        "eventName": "ConsoleLogin",
+        "requestParameters": {},
+        "userIdentity": {
+          "type": "Root"
+        },
+        "responseElements": {
+          "ConsoleLogin": "Success"
+        }
+      },
+      "expected_rule_ids": [
+        "CS-IAM-003"
+      ]
+    },
+    {
+      "id": "negative-root-login-failed",
+      "label": "negative",
+      "event": {
+        "eventSource": "signin.amazonaws.com",
+        "eventName": "ConsoleLogin",
+        "requestParameters": {},
+        "userIdentity": {
+          "type": "Root"
+        },
+        "responseElements": {
+          "ConsoleLogin": "Failure"
+        }
+      },
+      "expected_rule_ids": []
+    },
+    {
+      "id": "positive-public-bucket-policy",
+      "label": "positive",
+      "event": {
+        "eventSource": "s3.amazonaws.com",
+        "eventName": "PutBucketPolicy",
+        "requestParameters": {
+          "bucketName": "public-lab",
+          "policyDocument": {
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": "*",
+                "Action": "s3:GetObject",
+                "Resource": "arn:aws:s3:::public-lab/*"
+              }
+            ]
+          }
+        }
+      },
+      "expected_rule_ids": [
+        "CS-S3-001"
+      ]
+    },
+    {
+      "id": "negative-private-bucket-policy",
+      "label": "negative",
+      "event": {
+        "eventSource": "s3.amazonaws.com",
+        "eventName": "PutBucketPolicy",
+        "requestParameters": {
+          "bucketName": "private-lab",
+          "policyDocument": {
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "AWS": "arn:aws:iam::123456789012:root"
+                },
+                "Action": "s3:GetObject"
+              }
+            ]
+          }
+        }
+      },
+      "expected_rule_ids": []
+    },
+    {
+      "id": "positive-public-acl",
+      "label": "positive",
+      "event": {
+        "eventSource": "s3.amazonaws.com",
+        "eventName": "PutBucketAcl",
+        "requestParameters": {
+          "bucketName": "acl-lab",
+          "accessControlPolicy": {
+            "accessControlList": {
+              "grant": [
+                {
+                  "grantee": {
+                    "uri": "http://acs.amazonaws.com/groups/global/AllUsers"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "expected_rule_ids": [
+        "CS-S3-002"
+      ]
+    },
+    {
+      "id": "negative-private-acl",
+      "label": "negative",
+      "event": {
+        "eventSource": "s3.amazonaws.com",
+        "eventName": "PutBucketAcl",
+        "requestParameters": {
+          "bucketName": "private-acl",
+          "accessControlPolicy": {
+            "accessControlList": {
+              "grant": [
+                {
+                  "grantee": {
+                    "id": "owner"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "expected_rule_ids": []
+    },
+    {
+      "id": "positive-public-ssh",
+      "label": "positive",
+      "event": {
+        "eventSource": "ec2.amazonaws.com",
+        "eventName": "AuthorizeSecurityGroupIngress",
+        "requestParameters": {
+          "groupId": "sg-lab",
+          "ipPermissions": [
+            {
+              "ipProtocol": "tcp",
+              "fromPort": 22,
+              "toPort": 22,
+              "ipRanges": [
+                {
+                  "cidrIp": "0.0.0.0/0"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected_rule_ids": [
+        "CS-NET-001"
+      ]
+    },
+    {
+      "id": "negative-private-ssh",
+      "label": "negative",
+      "event": {
+        "eventSource": "ec2.amazonaws.com",
+        "eventName": "AuthorizeSecurityGroupIngress",
+        "requestParameters": {
+          "groupId": "sg-private",
+          "ipPermissions": [
+            {
+              "ipProtocol": "tcp",
+              "fromPort": 22,
+              "toPort": 22,
+              "ipRanges": [
+                {
+                  "cidrIp": "10.0.0.0/8"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected_rule_ids": []
+    },
+    {
+      "id": "positive-public-web-port",
+      "label": "positive",
+      "event": {
+        "eventSource": "ec2.amazonaws.com",
+        "eventName": "AuthorizeSecurityGroupIngress",
+        "requestParameters": {
+          "groupId": "sg-web",
+          "ipPermissions": [
+            {
+              "ipProtocol": "tcp",
+              "fromPort": 8080,
+              "toPort": 8080,
+              "ipRanges": [
+                {
+                  "cidrIp": "0.0.0.0/0"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected_rule_ids": [
+        "CS-NET-002"
+      ]
+    },
+    {
+      "id": "negative-cloudtrail-status",
+      "label": "negative",
+      "event": {
+        "eventSource": "cloudtrail.amazonaws.com",
+        "eventName": "GetTrailStatus",
+        "requestParameters": {
+          "name": "trail"
+        }
+      },
+      "expected_rule_ids": []
+    },
+    {
+      "id": "positive-cloudtrail-stop",
+      "label": "positive",
+      "event": {
+        "eventSource": "cloudtrail.amazonaws.com",
+        "eventName": "StopLogging",
+        "requestParameters": {
+          "name": "trail"
+        }
+      },
+      "expected_rule_ids": [
+        "CS-CT-001"
+      ]
+    },
+    {
+      "id": "negative-kms-describe",
+      "label": "negative",
+      "event": {
+        "eventSource": "kms.amazonaws.com",
+        "eventName": "DescribeKey",
+        "requestParameters": {
+          "keyId": "key"
+        }
+      },
+      "expected_rule_ids": []
+    },
+    {
+      "id": "positive-kms-disable",
+      "label": "positive",
+      "event": {
+        "eventSource": "kms.amazonaws.com",
+        "eventName": "DisableKey",
+        "requestParameters": {
+          "keyId": "key"
+        }
+      },
+      "expected_rule_ids": [
+        "CS-KMS-001"
+      ]
+    },
+    {
+      "id": "negative-ebs-private-snapshot",
+      "label": "negative",
+      "event": {
+        "eventSource": "ec2.amazonaws.com",
+        "eventName": "ModifySnapshotAttribute",
+        "requestParameters": {
+          "snapshotId": "snap-private",
+          "createVolumePermission": {
+            "add": [
+              {
+                "group": "self"
+              }
+            ]
+          }
+        }
+      },
+      "expected_rule_ids": []
+    },
+    {
+      "id": "positive-ebs-public-snapshot",
+      "label": "positive",
+      "event": {
+        "eventSource": "ec2.amazonaws.com",
+        "eventName": "ModifySnapshotAttribute",
+        "requestParameters": {
+          "snapshotId": "snap-public",
+          "createVolumePermission": {
+            "add": [
+              {
+                "group": "all"
+              }
+            ]
+          }
+        }
+      },
+      "expected_rule_ids": [
+        "CS-EC2-001"
+      ]
+    },
+    {
+      "id": "negative-lambda-account-principal",
+      "label": "negative",
+      "event": {
+        "eventSource": "lambda.amazonaws.com",
+        "eventName": "AddPermission",
+        "requestParameters": {
+          "functionName": "private",
+          "principal": "123456789012"
+        }
+      },
+      "expected_rule_ids": []
+    },
+    {
+      "id": "positive-lambda-public",
+      "label": "positive",
+      "event": {
+        "eventSource": "lambda.amazonaws.com",
+        "eventName": "AddPermission",
+        "requestParameters": {
+          "functionName": "public",
+          "principal": "*"
+        }
+      },
+      "expected_rule_ids": [
+        "CS-LAMBDA-001"
+      ]
+    },
+    {
+      "id": "negative-rds-private-share",
+      "label": "negative",
+      "event": {
+        "eventSource": "rds.amazonaws.com",
+        "eventName": "ModifyDBSnapshotAttribute",
+        "requestParameters": {
+          "dBSnapshotIdentifier": "private",
+          "valuesToAdd": [
+            "123456789012"
+          ]
+        }
+      },
+      "expected_rule_ids": []
+    },
+    {
+      "id": "positive-rds-public-share",
+      "label": "positive",
+      "event": {
+        "eventSource": "rds.amazonaws.com",
+        "eventName": "ModifyDBSnapshotAttribute",
+        "requestParameters": {
+          "dBSnapshotIdentifier": "public",
+          "valuesToAdd": [
+            "all"
+          ]
+        }
+      },
+      "expected_rule_ids": [
+        "CS-RDS-001"
+      ]
+    },
+    {
+      "id": "negative-securityhub-unknown-severity",
+      "label": "negative",
+      "event": {
+        "eventSource": "securityhub.amazonaws.com",
+        "eventName": "SecurityHubFinding",
+        "requestParameters": {
+          "severity": "UNRECOGNIZED"
+        }
+      },
+      "expected_rule_ids": []
+    },
+    {
+      "id": "positive-securityhub-finding",
+      "label": "positive",
+      "event": {
+        "eventSource": "securityhub.amazonaws.com",
+        "eventName": "SecurityHubFinding",
+        "requestParameters": {
+          "severity": "HIGH",
+          "title": "Imported finding"
+        }
+      },
+      "expected_rule_ids": [
+        "CS-SH-001"
+      ]
+    },
+    {
+      "id": "negative-private-web-port",
+      "label": "negative",
+      "event": {
+        "eventSource": "ec2.amazonaws.com",
+        "eventName": "AuthorizeSecurityGroupIngress",
+        "requestParameters": {
+          "groupId": "sg-private-web",
+          "ipPermissions": [
+            {
+              "ipProtocol": "tcp",
+              "fromPort": 8080,
+              "toPort": 8080,
+              "ipRanges": [
+                {
+                  "cidrIp": "10.0.0.0/8"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected_rule_ids": []
+    }
+  ]
+}

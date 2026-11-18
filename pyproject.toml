@@ -12,6 +12,7 @@ dependencies = []
 
 [project.optional-dependencies]
 aws = ["boto3>=1.34,<2"]
+signing = ["cryptography>=42"]
 
 [project.scripts]
 cloudshield = "cloudshield.cli:main"

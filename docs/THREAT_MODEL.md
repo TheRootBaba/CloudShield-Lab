@@ -35,14 +35,18 @@ CloudShield Lab is a defensive engineering lab. The default runtime binds to 127
 - Simulator performs no network or cloud API calls.
 - AWS collector is disabled unless an explicit environment flag is set; collection is one-shot and read-only, uses the standard credential chain, limits lookback to 24 hours and caps pages per request.
 - No automatic remediation or AWS write API is implemented.
+- Optional inventory is gated by an explicit environment variable, restricted to selected list/describe APIs, limited to five explicit regions and two pages per operation.
+- Optional Ed25519 evidence signatures require a password-encrypted private key and a separately trusted public key. Invalid bundles are refused before signing.
 - Terraform roots remain separate and require explicit opt-in for resource creation.
 
 ## Residual risks and limitations
 
 - Local users and processes with access to the machine can read or modify the SQLite database and local source.
-- SHA-256 does not prove origin, provide trusted timestamps or prevent an attacker from replacing both data and digest.
+- SHA-256 does not prove origin, provide trusted timestamps or prevent an attacker from replacing both data and digest. Detached signatures add signer-key integrity only when the public key is independently trusted; they do not authenticate the original AWS event source.
 - Loopback-only access is not a substitute for authentication if the app is exposed or if other local processes are untrusted.
 - Event-pattern detections can miss unsupported event shapes, services, data-plane activity and contextual attack signals.
 - Actor/account/time correlation and graph edges are investigative hypotheses, not causal proof.
 - The optional collector reads management-event history only and is not a durable streaming audit pipeline.
+- The optional inventory is partial metadata discovery. A truncated or untruncated response is not a complete organization-wide resource inventory.
+- Fixture evaluation is hand-labelled and cannot establish production detection accuracy.
 - Human review is required before acting on findings. No remediation is automated.

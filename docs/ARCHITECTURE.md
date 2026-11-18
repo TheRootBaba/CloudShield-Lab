@@ -3,9 +3,13 @@
 ## Runtime
 
 - cloudshield.api serves the Vite-built React command center from web/ and the local JSON API using Python standard-library HTTP components.
+- cli.py exposes analysis, simulation, storage, evaluation, evidence signing and opt-in AWS inventory commands.
 - App.jsx and styles.css implement the responsive React interface; Vite builds hashed JavaScript, CSS and font assets into web/.
 - assets.py derives an observed-resource inventory and contextual relationship graph from stored event and finding evidence.
 - attack_techniques.py attaches conservative, curated MITRE ATT&CK references to selected detection rules; mappings are coverage hypotheses, not confirmation of technique execution.
+- evaluation.py calculates fixture-scoped confusion counts and per-rule detection metrics.
+- evidence_signing.py creates and verifies detached Ed25519 signatures for valid Phase 10 bundles.
+- aws_inventory.py provides an explicitly enabled, bounded, read-only inventory adapter; it does not claim complete AWS account discovery.
 - pipeline.py normalizes events, applies explainable detection rules and groups findings into incidents.
 - storage.py persists normalized events, findings and incidents transactionally in SQLite.
 - graph.py creates a relationship graph with finding/event, actor, account and resource nodes. Observed resource references and temporal adjacency edges are labelled with their evidence.
