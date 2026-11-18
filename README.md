@@ -65,7 +65,7 @@ The server binds to 127.0.0.1. Do not expose it to a public network. No authenti
 
 Uploaded JSON is treated as untrusted input. The local API enforces a 2 MiB body limit and sends restrictive browser security headers. No cloud collection, resource creation, remediation or AWS writes happen unless the operator explicitly enables the one-shot collector. Terraform examples remain separate and opt-in.
 
-## Incident workflow and evidence bundles
+## Phases 9–10: incident workflow and evidence bundles
 
 - Use the incident drawer to set workflow status (`new`, `acknowledged`, `in_progress`, `resolved`, `reopened`), priority, assignee and add analyst notes.
 - Workflow changes and notes are retained in a local activity history.
@@ -73,7 +73,7 @@ Uploaded JSON is treated as untrusted input. The local API enforces a 2 MiB body
 - API: `GET /api/incidents/{id}/workflow`, `PATCH /api/incidents/{id}/workflow`, `POST /api/incidents/{id}/notes`, `GET /api/incidents/{id}/export`, and `POST /api/evidence/verify`.
 - Integrity checks validate incident/event/finding digests, manifest digest and event references. This is not cryptographic authenticity or trusted chain of custody.
 
-## Terraform safety
+See docs/PHASE_9_INCIDENT_RESPONSE.md and docs/PHASE_10_EVIDENCE_BUNDLES.md for implementation details and boundaries.\n\n## Terraform safety
 
 Examples remain under terraform/secure and terraform/vulnerable. Both default to no resource creation and require explicit opt-in. The vulnerable root intentionally creates insecure training fixtures. Never apply it to a production or shared account. Review cost, region, IAM permissions and teardown before any AWS apply.
 
