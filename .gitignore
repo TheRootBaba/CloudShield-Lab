@@ -6,6 +6,7 @@ venv/
 .env
 .env.*
 !.env.example
+!.env.production.example
 .terraform/
 *.tfstate
 *.tfstate.*
@@ -30,3 +31,8 @@ npm-debug.log*
 .audit-venv/
 
 .verify-venv/
+
+.coverage
+.coverage.*
+htmlcov/
+backups/

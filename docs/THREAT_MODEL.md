@@ -2,7 +2,7 @@
 
 ## Purpose and deployment boundary
 
-CloudShield Lab is a defensive engineering lab. The default runtime binds to 127.0.0.1 and is intended for one local analyst. It has no user authentication or multi-tenant isolation. Do not expose it to a LAN, public network, reverse proxy or hosted environment without adding authentication, authorization, CSRF protections, rate limits, audit controls and deployment hardening.
+CloudShield Lab is a defensive engineering lab. The default runtime binds to 127.0.0.1 and remains a single-user local mode. Optional multi-user mode adds password/session authentication, server-side roles, CSRF protection and separate SQLite workspaces. The production Compose profile places Caddy HTTPS ingress in front of a private API. It is not an HA or independently certified SaaS service; MFA/SSO, external audit/monitoring and independent penetration testing remain required before a public launch.
 
 ## Assets
 

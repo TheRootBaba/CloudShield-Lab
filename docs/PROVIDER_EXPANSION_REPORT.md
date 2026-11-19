@@ -78,4 +78,4 @@ Keep both disabled for offline use. Never use root/Owner/Contributor credentials
 
 ## Final release boundary
 
-The offline code and local operations tranche is delivered. CloudShield is still a single-tenant local application; API bearer tokens do not provide a browser login or production identity lifecycle. Do not expose the listener or container to a LAN/public network. Phases 15–20 cannot be honestly marked fully production-complete until the listed independent, live-provider and operational gates are performed in the intended operating environment.
+The core local multi-user tranche is implemented with browser sessions and isolated workspaces. The production HTTPS stack is a validated configuration template, not a deployed service. Do not expose the listener directly. Phases 15?20 cannot be marked fully production-complete until enterprise identity, live provider, independent security and real-host operational gates are performed.

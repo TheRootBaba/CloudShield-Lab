@@ -3,30 +3,24 @@
 ## Offline local milestone
 
 - [x] Unit/integration tests for API, evidence, detection, graph, mocked AWS and mocked Azure adapters.
-- [x] Configurable API bearer roles, request limits, security headers and mutation audit records.
+- [x] Configurable API bearer roles plus multi-user browser login, scrypt password hashing, invitation-only workspaces, separate tenant databases, expiring/revocable sessions, CSRF protection, role enforcement, first-admin bootstrap-key protection and authentication audit records.
 - [x] Versioned evidence manifest, provenance fields, integrity verifier and detached Ed25519 support.
 - [x] Deterministic detection evaluation methodology, confidence rationale and fixture regression tests.
-- [x] Automated SQLite online backup, manifest verification and non-overwriting restore commands, plus health/rollback runbooks.
-- [x] Local-only container profile authored with non-root user, read-only root filesystem, dropped capabilities and loopback host port; Compose YAML parsed.
-- [x] GitHub Actions run #33 built the local container image without pushing and validated Compose configuration.
+- [x] Automated SQLite online backup, manifest verification and non-overwriting restore commands, plus multi-workspace auth+tenant archive, verification, safe restore and recovery tests.
+- [x] Local-only container profile and separate Caddy HTTPS production Compose profile authored; app is on an internal-only backend network with no published port/direct egress, Caddy alone is public ingress, and bootstrap secret is passed only to the app. Compose topology assertions pass.
+- [x] Previous GitHub Actions run #33 built the local container image without pushing. Current production Compose validation is added to CI; a new build is pending.
 - [x] AWS access disabled for this milestone; no live cloud calls or resources.
 - [ ] Independent security review / penetration test.
-- [ ] Actual backup restore exercise on a separately managed backup copy.
+- [x] Automated workspace-set backup/verify/restore exercise with restored-session authentication and tenant evidence checks; Windows deployment, quiesced backup and isolated restore-drill scripts are provided.
+- [ ] Restore exercise on the actual production host using independently stored off-host media.
 - [ ] Production telemetry and independently reviewed labels.
+- [x] Local verification snapshot: 121 tests, 96% auth/recovery statement coverage (90% CI gate), 30/30 curated detection fixtures, Bandit zero findings, pinned cloud dependency lock audit clean, npm production audit clean, and production Compose topology checks passed. Whole-package branch-inclusive coverage is 79%; the 90% gate is not currently global.
 
 ## Not approved for hosted production
 
-The UI has no browser login/token lifecycle. The service remains single-tenant, loopback-bound and SQLite-backed. Role tokens are long-lived environment secrets with manual rotation; no MFA, SSO, expiry or revocation service exists. The audit table is local and mutable by host/database administrators. Rate limits are in-memory and per-process. Trusted timestamping, WORM storage, managed secret storage, central monitoring and tenant isolation are not implemented. A reverse proxy alone does not solve these gaps.
+Core browser password/session authentication and workspace-level database isolation are implemented behind CLOUDSHIELD_AUTH_MODE=multi_user. The production Compose profile provides Caddy HTTPS ingress, an internal-only API network, Secure cookies and first-admin bootstrap protection, but it has not been deployed to a real host/domain. A guarded Windows deployment script validates config/build/start and internal plus public HTTPS health. The app is a single-host deployment template, not an HA SaaS service.
 
-## External assurance gates
-
-1. Independent threat-model review and penetration test, with findings tracked to closure.
-2. Browser UI authentication and identity lifecycle, authorization boundaries and tenant isolation if multi-user.
-3. Managed secrets, TLS ingress, central append-only audit, monitoring/alerting and operational ownership.
-4. Verified backup/restore and incident-response exercise.
-5. Representative telemetry evaluation and detection tuning.
-6. Live AWS and Azure integration/inventory validation after active accounts, explicit provider-by-provider scope and cost approval.
-7. Trusted timestamping / immutable evidence archive if required by the evidence policy.
+MFA/WebAuthn, OIDC/SAML SSO, verified email, password reset, session/device management UI, distributed rate limiting, external audit export, managed secret storage, monitoring/alerting, provider-specific tenant credentials and independent penetration testing remain open. Automated recovery tests pass locally, but an actual off-host production restore exercise remains open. The local Docker daemon was unavailable for a local image build; CI is configured to build and validate both Compose profiles.
 
 ## Support policy
 

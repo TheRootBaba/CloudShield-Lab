@@ -1,0 +1,248 @@
+import http.cookiejar
+import json
+import os
+import tempfile
+import threading
+import unittest
+from pathlib import Path
+from urllib.error import HTTPError
+from urllib.request import HTTPCookieProcessor, Request, build_opener
+from http.server import ThreadingHTTPServer
+from unittest.mock import patch
+
+from cloudshield import api
+
+
+class MultiUserApiTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.old_db = api.DB_PATH
+        self.old_auth = api._AUTH_STORE
+        api.DB_PATH = self.root / "legacy.sqlite3"
+        api._AUTH_STORE = None
+        api._AUTH_LIMITER = api.SlidingWindowLimiter(30)
+        self.env = patch.dict(os.environ, {
+            "CLOUDSHIELD_AUTH_MODE": "multi_user",
+            "CLOUDSHIELD_AUTH_DB": str(self.root / "auth.sqlite3"),
+            "CLOUDSHIELD_TENANT_DIR": str(self.root / "tenants"),
+            "CLOUDSHIELD_COOKIE_SECURE": "0",
+        }, clear=False)
+        self.env.start()
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), api.Handler)
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        self.base = f"http://127.0.0.1:{self.server.server_port}"
+
+    def tearDown(self):
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=2)
+        self.env.stop()
+        api.DB_PATH = self.old_db
+        api._AUTH_STORE = self.old_auth
+        self.tmp.cleanup()
+
+    def client(self):
+        jar = http.cookiejar.CookieJar()
+        opener = build_opener(HTTPCookieProcessor(jar))
+        opener.cookiejar = jar
+        return opener, jar
+
+    def call(self, opener, path, method="GET", payload=None, csrf=True):
+        headers = {}
+        data = None
+        if payload is not None:
+            data = json.dumps(payload).encode()
+            headers["Content-Type"] = "application/json"
+        jar = opener.cookiejar
+        if method in {"POST", "PATCH"} and csrf:
+            token = next((c.value for c in jar if c.name == "cloudshield_csrf"), "")
+            if token:
+                headers["X-CSRF-Token"] = token
+        req = Request(self.base + path, data=data, headers=headers, method=method)
+        try:
+            with opener.open(req, timeout=5) as response:
+                raw = response.read()
+                return response.status, json.loads(raw) if raw else {}
+        except HTTPError as exc:
+            raw = exc.read()
+            try:
+                body = json.loads(raw) if raw else {}
+            finally:
+                status = exc.code
+                exc.close()
+            return status, body
+
+    def test_bootstrap_signup_login_logout_and_csrf(self):
+        opener, _ = self.client()
+        self.assertEqual((200, {"enabled": True, "bootstrap_required": True, "bootstrap_token_required": False}), self.call(opener, "/api/auth/status"))
+        status, created = self.call(opener, "/api/auth/register", "POST", {
+            "email": "admin@example.test", "display_name": "Workspace Admin",
+            "tenant_name": "Blue Team", "password": "correct horse battery staple"
+        })
+        self.assertEqual(200, status)
+        self.assertEqual("admin", created["user"]["role"])
+        self.assertEqual(200, self.call(opener, "/api/auth/me")[0])
+        self.assertEqual(403, self.call(opener, "/api/simulate", "POST", {"scenario": "multi-stage-compromise"}, csrf=False)[0])
+        self.assertEqual(200, self.call(opener, "/api/simulate", "POST", {"scenario": "multi-stage-compromise"})[0])
+        self.assertEqual(200, self.call(opener, "/api/auth/logout", "POST", {})[0])
+        self.assertEqual(401, self.call(opener, "/api/dashboard")[0])
+
+    def test_separate_workspaces_have_separate_evidence_databases(self):
+        first, _ = self.client()
+        status, admin = self.call(first, "/api/auth/register", "POST", {
+            "email": "owner@example.test", "display_name": "Owner",
+            "tenant_name": "Northwind SOC", "password": "a sufficiently long passphrase"
+        })
+        self.assertEqual(200, status)
+        self.assertEqual(200, self.call(first, "/api/simulate", "POST", {"scenario": "multi-stage-compromise"})[0])
+        status, invitation = self.call(first, "/api/team/workspace-invites", "POST", {"workspace_name": "Contoso SOC"})
+        self.assertEqual(201, status)
+        second, _ = self.client()
+        status, member = self.call(second, "/api/auth/register", "POST", {
+            "email": "other@example.test", "display_name": "Other Admin",
+            "password": "another sufficiently long passphrase", "invite_code": invitation["invite_code"]
+        })
+        self.assertEqual(200, status)
+        self.assertEqual("admin", member["user"]["role"])
+        self.assertEqual(0, self.call(second, "/api/dashboard")[1]["events_total"])
+        self.assertEqual(200, self.call(second, "/api/simulate", "POST", {"scenario": "multi-stage-compromise"})[0])
+        self.assertEqual(4, self.call(first, "/api/dashboard")[1]["events_total"])
+        self.assertEqual(4, self.call(second, "/api/dashboard")[1]["events_total"])
+        self.assertNotEqual(admin["user"]["tenant_id"], member["user"]["tenant_id"])
+        first_incident = self.call(first, "/api/incidents")[1][0]["incident_id"]
+        self.assertEqual(404, self.call(second, "/api/incidents/" + first_incident)[0])
+
+    def test_invitation_is_single_use_and_roles_are_server_enforced(self):
+        admin, _ = self.client()
+        self.call(admin, "/api/auth/register", "POST", {
+            "email": "admin@example.test", "display_name": "Admin",
+            "tenant_name": "Test Workspace", "password": "a secure admin passphrase"
+        })
+        _, invite = self.call(admin, "/api/team/invites", "POST", {"role": "analyst"})
+        analyst, _ = self.client()
+        status, member = self.call(analyst, "/api/auth/register", "POST", {
+            "email": "analyst@example.test", "display_name": "Read Only",
+            "password": "a secure analyst passphrase", "invite_code": invite["invite_code"]
+        })
+        self.assertEqual(200, status)
+        self.assertEqual("analyst", member["user"]["role"])
+        self.assertEqual(200, self.call(analyst, "/api/dashboard")[0])
+        self.assertEqual(403, self.call(analyst, "/api/simulate", "POST", {"scenario": "all"})[0])
+        third, _ = self.client()
+        self.assertEqual(403, self.call(third, "/api/auth/register", "POST", {
+            "email": "reuse@example.test", "display_name": "Reuse",
+            "password": "a secure reused invitation", "invite_code": invite["invite_code"]
+        })[0])
+
+
+    def test_login_session_revocation_and_member_disable(self):
+        admin, _ = self.client()
+        self.call(admin, "/api/auth/register", "POST", {
+            "email": "admin@example.test", "display_name": "Admin",
+            "tenant_name": "Revocation Lab", "password": "a secure admin passphrase"
+        })
+        _, invitation = self.call(admin, "/api/team/invites", "POST", {"role": "responder"})
+        member, _ = self.client()
+        status, registered = self.call(member, "/api/auth/register", "POST", {
+            "email": "member@example.test", "display_name": "Responder",
+            "password": "a secure responder passphrase", "invite_code": invitation["invite_code"]
+        })
+        self.assertEqual(200, status)
+        self.assertEqual(200, self.call(member, "/api/dashboard")[0])
+        status, login = self.call(self.client()[0], "/api/auth/login", "POST", {
+            "email": "member@example.test", "password": "a secure responder passphrase"
+        })
+        self.assertEqual(200, status)
+        self.assertEqual("responder", login["user"]["role"])
+        self.assertEqual(200, self.call(admin, "/api/team/members")[0])
+        status, _ = self.call(admin, "/api/team/members/" + registered["user"]["user_id"] + "/disable", "POST", {})
+        self.assertEqual(200, status)
+        self.assertEqual(401, self.call(member, "/api/dashboard")[0])
+        members = self.call(admin, "/api/team/members")[1]["members"]
+        self.assertFalse(next(m for m in members if m["user_id"] == registered["user"]["user_id"])["active"])
+
+    def test_shared_mode_never_exposes_or_uses_host_cloud_credentials(self):
+        admin, _ = self.client()
+        self.call(admin, "/api/auth/register", "POST", {
+            "email": "admin@example.test", "display_name": "Admin",
+            "tenant_name": "Shared Cloud", "password": "a secure admin passphrase"
+        })
+        with patch.dict(os.environ, {
+            "CLOUDSHIELD_ENABLE_AWS_COLLECTOR": "1",
+            "CLOUDSHIELD_ENABLE_AZURE_COLLECTION": "1",
+            "AZURE_CLIENT_ID": "fake-client", "AZURE_TENANT_ID": "fake-tenant",
+            "AZURE_CLIENT_SECRET": "fake-secret", "AZURE_SUBSCRIPTION_ID": "fake-subscription"
+        }):
+            providers = self.call(admin, "/api/providers")[1]["providers"]
+            self.assertFalse(any(p.get("enabled") for p in providers))
+            self.assertFalse(providers[0]["credentials_detected"])
+            self.assertFalse(providers[1]["environment_credentials_configured"])
+            self.assertEqual(403, self.call(admin, "/api/collector/aws", "POST", {})[0])
+            self.assertEqual(403, self.call(admin, "/api/collector/azure/inventory", "POST", {})[0])
+
+
+    def test_expired_session_and_cross_origin_mutation_are_rejected(self):
+        opener, jar = self.client()
+        status, _ = self.call(opener, "/api/auth/register", "POST", {
+            "email": "admin@example.test", "display_name": "Admin",
+            "tenant_name": "Origin Lab", "password": "a secure admin passphrase"
+        })
+        self.assertEqual(200, status)
+        import sqlite3
+        db = sqlite3.connect(Path(os.environ["CLOUDSHIELD_AUTH_DB"]))
+        try:
+            db.execute("UPDATE sessions SET expires_at='2000-01-01T00:00:00+00:00'")
+            db.commit()
+        finally:
+            db.close()
+        self.assertEqual(401, self.call(opener, "/api/dashboard")[0])
+
+        fresh, fresh_jar = self.client()
+        self.call(fresh, "/api/auth/login", "POST", {
+            "email": "admin@example.test", "password": "a secure admin passphrase"
+        })
+        csrf = next(c.value for c in fresh_jar if c.name == "cloudshield_csrf")
+        request = Request(self.base + "/api/simulate", data=json.dumps({"scenario":"all"}).encode(),
+                          headers={"Content-Type":"application/json", "Origin":"https://attacker.invalid",
+                                   "X-CSRF-Token":csrf}, method="POST")
+        with self.assertRaises(HTTPError) as denied:
+            fresh.open(request, timeout=5)
+        self.assertEqual(403, denied.exception.code)
+        denied.exception.close()
+
+    def test_auth_mode_disabled_reports_status_without_creating_auth_store(self):
+        with patch.dict(os.environ, {"CLOUDSHIELD_AUTH_MODE": ""}):
+            api._AUTH_STORE = None
+            opener, _ = self.client()
+            status, result = self.call(opener, "/api/auth/status")
+            self.assertEqual(200, status)
+            self.assertFalse(result["enabled"])
+            self.assertIsNone(api._AUTH_STORE)
+
+
+    def test_initial_admin_setup_key_is_required_when_configured(self):
+        with patch.dict(os.environ, {"CLOUDSHIELD_BOOTSTRAP_TOKEN": "K" * 48}):
+            opener, _ = self.client()
+            status, state = self.call(opener, "/api/auth/status")
+            self.assertEqual(200, status)
+            self.assertTrue(state["bootstrap_token_required"])
+            payload = {"email":"owner@example.test","display_name":"Owner","tenant_name":"Protected workspace","password":"a sufficiently long passphrase"}
+            self.assertEqual(403, self.call(opener, "/api/auth/register", "POST", payload)[0])
+            payload["bootstrap_token"] = "wrong-key"
+            self.assertEqual(403, self.call(opener, "/api/auth/register", "POST", payload)[0])
+            payload["bootstrap_token"] = "🔑" * 48
+            self.assertEqual(403, self.call(opener, "/api/auth/register", "POST", payload)[0])
+            payload["bootstrap_token"] = {"unexpected": "object"}
+            self.assertEqual(403, self.call(opener, "/api/auth/register", "POST", payload)[0])
+            payload["bootstrap_token"] = "K" * 48
+            self.assertEqual(200, self.call(opener, "/api/auth/register", "POST", payload)[0])
+            status, state = self.call(opener, "/api/auth/status")
+            self.assertEqual(200, status)
+            self.assertFalse(state["bootstrap_required"])
+            self.assertFalse(state["bootstrap_token_required"])
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -13,4 +13,4 @@
 - POST /api/incidents/{id}/notes — note and actor
 
 ## Safety/scope
-Single-user local SQLite state. Analyst actor is a free-text label, not authentication. This is not a shared team case-management system. The incident detector may generate incidents deterministically from new ingested data; the workflow table stores analyst state separately and is not automatically remediated.
+Legacy local mode uses single-user SQLite state and free-text analyst labels. Optional multi-user mode uses authenticated actors and a separate SQLite evidence database per workspace. This is not a full enterprise case-management platform. The incident detector may generate incidents deterministically from new ingested data; the workflow table stores analyst state separately and is not automatically remediated.

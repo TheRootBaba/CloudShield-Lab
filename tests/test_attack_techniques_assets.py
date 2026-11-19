@@ -1,6 +1,6 @@
 import unittest
 from cloudshield.attack_techniques import RULE_TECHNIQUES, catalog, techniques_for_rule
-from cloudshield.assets import inventory, relationship_graph
+from cloudshield.assets import classify_resource, inventory, relationship_graph
 from cloudshield.pipeline import analyze_payload
 
 class AttackTechniqueTests(unittest.TestCase):
@@ -57,6 +57,62 @@ class AssetInventoryTests(unittest.TestCase):
     def test_no_unobserved_assets_in_empty_input(self):
         self.assertEqual([],inventory([],[]))
         self.assertEqual([],relationship_graph([],[])["edges"])
+
+    def test_resource_classifier_covers_supported_and_unknown_identifiers(self):
+        cases = {
+            "arn:aws:s3:::bucket": "s3-bucket",
+            "arn:aws:iam::123:role/team": "iam-role",
+            "arn:aws:iam::123:user/alice": "iam-user",
+            "arn:aws:iam::123:policy/custom": "iam-policy",
+            "arn:aws:ec2:region:123:instance/i-123": "ec2-instance",
+            "arn:aws:ec2:region:123:security-group/sg-123": "security-group",
+            "arn:aws:ec2:region:123:snapshot/snap-123": "ebs-snapshot",
+            "arn:aws:ec2:region:123:volume/vol-123": "ebs-volume",
+            "arn:aws:ec2:region:123:network-interface/eni-123": "ec2-network-interface",
+            "arn:aws:rds:region:123:db:sample": "rds-resource",
+            "arn:aws:lambda:region:123:function:sample": "lambda-function",
+            "arn:aws:kms:region:123:key/sample": "kms-key",
+            "arn:aws:logs:region:123:log-group:sample": "logs-resource",
+            "arn:aws": "unknown-resource",
+            "sg-123": "security-group",
+            "i-123": "ec2-instance",
+            "snap-123": "ebs-snapshot",
+            "unclassified": "unknown-resource",
+        }
+        for resource, expected in cases.items():
+            with self.subTest(resource=resource):
+                self.assertEqual(expected, classify_resource(resource))
+
+    def test_raw_resource_extraction_unknown_defaults_and_graph_without_matching_assets(self):
+        event = {
+            "event_id": "raw-event", "event_time": "2026-01-01T00:00:00Z",
+            "account_id": None, "region": None, "actor": None,
+            "event_source": "iam.amazonaws.com", "resource_ids": [],
+            "raw": {"detail": {"resources": [
+                {"ARN": "arn:aws:iam::123456789012:role/demo"},
+                {"arn": "arn:aws:iam::123456789012:user/demo"},
+                {"id": "sg-123"}, "i-123"
+            ]}},
+            "request_parameters": {
+                "bucketName": "bucket", "groupId": "sg-123", "roleName": "role",
+                "userName": "user", "policyArn": "policy", "functionName": "fn",
+                "snapshotId": "snap-123", "dBSnapshotIdentifier": "db-snap",
+                "keyId": "key", "trailName": "trail"
+            }
+        }
+        findings = [
+            {"event_id": "raw-event", "rule_id": "R1", "severity": "HIGH"},
+            {"event_id": "raw-event", "rule_id": "R2", "severity": "CRITICAL"}
+        ]
+        assets = inventory([event], findings)
+        self.assertTrue(assets)
+        self.assertTrue(all(asset["account_id"] == "unknown" for asset in assets))
+        self.assertTrue(all(asset["region"] == "unknown" for asset in assets))
+        self.assertTrue(all(asset["actors"] == ["unknown"] for asset in assets))
+        self.assertTrue(all(asset["severities"] == ["CRITICAL", "HIGH"] for asset in assets))
+        graph = relationship_graph([event], [])
+        self.assertTrue(any(edge["relationship"] == "observed_in_account" for edge in graph["edges"]))
+        self.assertFalse(any(edge["relationship"] == "actor_touched_resource" for edge in graph["edges"]))
 
 if __name__=="__main__":
     unittest.main()

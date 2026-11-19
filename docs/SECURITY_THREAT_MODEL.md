@@ -1,6 +1,6 @@
 # Application security threat model
 
-**Status:** implemented controls for a single-tenant local API; not a certification or independent assessment.
+**Status:** local mode plus optional multi-user browser authentication and tenant-isolated evidence stores are implemented; not a certification or independent assessment.
 
 ## Assets and trust boundaries
 
@@ -13,27 +13,27 @@
 
 | Threat | Controls | Residual risk |
 |---|---|---|
-| Unauthenticated API access | Optional role-specific bearer tokens; 32-character minimum; constant-time comparisons; 401 on missing/invalid token when configured | Tokens are long-lived environment secrets; no user directory, MFA, token expiry or revocation database |
-| Privilege escalation | analyst read/verify; responder workflow/ingest/simulation; admin AWS collector; deny by default for unknown roles | Single-tenant roles; no per-incident or tenant ACL |
-| CSRF/cross-origin writes | Bearer header rather than ambient cookie; reject mismatched Origin; no credentialed CORS | Browser XSS or malicious same-origin code can still act with the token; frontend is not an identity provider |
-| Request abuse | 2 MiB JSON body cap, JSON object validation, transfer-encoding rejection, per-IP sliding-window limits | In-memory limits reset on restart and are per-process; proxy must add connection/time limits and global throttling |
+| Unauthenticated API access | Multi-user mode uses scrypt password hashes, opaque server-side session hashes, 12-hour expiry, HttpOnly/SameSite cookies, logout/member revocation and CSRF validation; legacy bearer-token mode remains optional | No MFA/WebAuthn, SSO, email verification or self-service recovery; no independent penetration test |
+| Privilege escalation | Server-enforced analyst/responder/admin roles; authenticated tenant scope selects a separate SQLite database; workspace invitations are single-use; member disable revokes sessions; shared cloud collectors are blocked in multi-user mode | One account belongs to one workspace; no cross-workspace switching; tenant isolation still needs independent security review |
+| CSRF/cross-origin writes | Multi-user cookie sessions require matching CSRF cookie/header hashes and reject mismatched Origin; SameSite=Strict; no credentialed CORS | Same-origin XSS can still act as the signed-in user; CSP permits inline styles; frontend dependency review remains required |
+| Request abuse | 2 MiB JSON body cap, JSON object validation, transfer-encoding rejection, per-IP sliding-window limits and auth-attempt throttling; persistent 15-minute account lock after eight failed password attempts | In-memory limits reset on restart and are per-process; proxy must add connection/time limits and global throttling |
 | Evidence tampering | SHA-256 per-record and manifest checks; Ed25519 detached signatures; independently trusted public-key fingerprint | Hashes alone are not authenticity; key custody and trusted timestamping remain external |
-| Sensitive changes repudiation | SQLite audit entries for workflow changes, notes, ingest, simulation and collector invocation | Local DB administrator can alter audit rows; no external append-only sink |
+| Sensitive changes repudiation | Tenant SQLite audit entries for workflow changes, notes, ingest and simulation; central auth audit records account/session/invitation/member changes | Local DB administrator can alter audit rows; no external append-only sink |
 | Browser attacks | CSP, nosniff, frame denial, referrer and permissions policies, no-store | Inline styles remain permitted; dependency and browser review still required |
 | Secret disclosure | no secret values logged; tokens supplied through environment; private signing keys excluded from Git | Environment variables may be visible to privileged host/process inspection; use an OS secret store for managed deployments |
 | Supply-chain compromise | npm audit in CI; Python dependency audit job; pinned lockfile for JS | CI scan cannot prove transitive packages safe; review advisories and lockfile changes |
 
 ## Roles
 
-- **analyst:** read API and verify uploaded bundles; cannot mutate incidents or ingest data.
+- **analyst:** read workspace evidence and verify uploaded bundles; cannot mutate incidents or ingest data.
 - **responder:** analyst access plus workflow changes, notes, ingest and offline simulation.
-- **admin:** responder access plus explicitly enabled AWS collector endpoint.
+- **admin:** responder access plus workspace invitations, member revocation and isolated workspace creation. Cloud collectors are deliberately blocked in shared multi-user mode until provider credentials are tenant-scoped.
 
 Configure unique `CLOUDSHIELD_ADMIN_TOKEN`, `CLOUDSHIELD_RESPONDER_TOKEN`, and optionally `CLOUDSHIELD_ANALYST_TOKEN`; each must be at least 32 characters. Do not commit tokens. When none are configured, the service operates in legacy loopback-only local mode; this is not authenticated remote access.
 
 ## Deployment boundary
 
-The Python server continues to bind only to loopback. For remote operator access, place a separately managed TLS reverse proxy / VPN in front of the loopback service, require HTTPS and inject the appropriate bearer token server-side. Do not expose the Python listener directly. The current React UI does not implement a login/token lifecycle, so a hosted interactive UI is not approved by this threat model; API token controls are not a complete hosted-user experience.
+The native default remains loopback-only. The separate production Compose profile places Caddy on ports 80/443 and keeps the Python API private on a Docker bridge. Startup refuses non-loopback binds unless multi-user auth and Secure cookies are enabled. Caddy must terminate HTTPS; the production sample uses automatic certificate management. The profile is a single-host template and has not been deployed to a real DNS name/host. Do not expose the API container port directly.
 
 ## Incident response
 
@@ -41,13 +41,13 @@ On suspected token compromise, stop the service, rotate the affected environment
 
 ## Explicit non-goals
 
-No multi-tenancy, SSO, MFA, password reset, session cookies, CSRF cookie tokens, distributed rate limiting, immutable audit sink, external KMS, trusted timestamp authority, penetration test or independent security sign-off is claimed.
+No SSO, MFA/WebAuthn, verified email, password reset, session/device management UI, distributed rate limiting, immutable external audit sink, external KMS, trusted timestamp authority, penetration test or independent security sign-off is claimed.
 
 
 ## Cloud provider credential boundary
 
-AWS uses the standard boto3 credential chain; Azure uses `DefaultAzureCredential`. CloudShield does not accept or persist provider client secrets. Collector execution is disabled unless its provider-specific environment flag is set, API collector routes require the admin role when role tokens are configured, and all adapter calls are read-only and bounded. Host environment variables, local CLI sessions, managed identities and cloud SDK credential caches remain trusted computing-base inputs. Never run with Owner/Administrator/Contributor permissions. Revoke temporary credentials after validation and protect exported telemetry as potentially sensitive.
+AWS uses the standard boto3 credential chain; Azure uses `DefaultAzureCredential`. CloudShield does not accept or persist provider client secrets. Collector execution is disabled unless its provider-specific environment flag is set, API collector routes require the admin role in legacy token mode. They are blocked in shared multi-user mode until per-tenant provider identities are supported. All adapter calls are read-only and bounded. Host environment variables, local CLI sessions, managed identities and cloud SDK credential caches remain trusted computing-base inputs. Never run with Owner/Administrator/Contributor permissions. Revoke temporary credentials after validation and protect exported telemetry as potentially sensitive.
 
 ## Container boundary
 
-The supplied Compose profile runs as non-root with a read-only root filesystem, dropped capabilities, no-new-privileges and a persistent data volume. The host port is explicitly bound to loopback. The application still has no browser login, MFA/SSO or tenant isolation; local containerization does not authorize network exposure.
+The supplied Compose profile runs as non-root with a read-only root filesystem, dropped capabilities, no-new-privileges and a persistent data volume. The host port is explicitly bound to loopback. The production profile adds browser password/session auth and tenant database isolation. MFA/SSO and independent tenant-isolation review remain outstanding; local containerization does not authorize network exposure.

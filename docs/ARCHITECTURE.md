@@ -40,7 +40,7 @@
 | PATCH | /api/incidents/{id}/workflow | Update validated workflow state, priority or assignee |
 | POST | /api/collector/aws | Explicit one-shot CloudTrail lookup; requires opt-in environment flag |
 
-The API binds to loopback by default and has no user authentication. It is intended for a single-user local lab only. POST requests require JSON and same-origin requests when an Origin header is supplied.
+The default API binds to loopback and preserves a single-user local mode. Optional multi-user mode adds browser authentication and workspace isolation. Non-loopback binds are refused unless multi-user mode and Secure cookies are enabled inside the supplied container profile. POST requests require JSON and same-origin Origin validation when an Origin header is supplied.
 
 ## Correlation and graph semantics
 
@@ -48,7 +48,7 @@ The incident builder groups findings by actor and account when adjacent finding 
 
 ## Evidence
 
-SQLite stores canonical JSON payloads and SHA-256 fingerprints. Hashes support integrity comparison but do not prove source authenticity, prevent database replacement or provide trusted timestamps. The database is single-user local storage.
+SQLite stores canonical JSON payloads and SHA-256 fingerprints. Hashes support integrity comparison but do not prove source authenticity, prevent database replacement or provide trusted timestamps. Legacy mode uses one local database; multi-user mode uses a distinct SQLite evidence database per workspace, selected only from the authenticated server-side session.
 
 ## AWS collector safety
 
