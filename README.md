@@ -114,7 +114,7 @@ Examples remain under terraform/secure and terraform/vulnerable. Both default to
 
 ## Tests
 
-Run **python -m compileall -q src tests** and **python -m unittest discover -s tests -v**. For the React command center, run **npm ci** and **npm run build**.
+Run **python -m compileall -q src tests** and **python -m unittest discover -s tests -v**. For the React command center, run **npm ci** and **npm run build**. The CI authentication/recovery coverage gate is **python -m coverage run --source=cloudshield.auth,cloudshield.recovery -m unittest discover -s tests -v** followed by **python -m coverage report --fail-under=90**.
 
 The suite covers normalization, selected detections, simulation, detection evaluation, signed evidence, mocked AWS inventory, incident grouping, graph semantics, API integration, SQLite persistence and Terraform safety fixtures.
 

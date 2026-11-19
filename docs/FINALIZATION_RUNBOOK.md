@@ -53,7 +53,7 @@ New CLI:
 - cloudshield verify-workspaces
 - cloudshield restore-workspaces
 
-The archive contains the auth database and every tenant database. It includes an internal manifest and a sidecar SHA-256 manifest. Verification checks archive digest, file list, bounded archive sizes, per-database digest and SQLite integrity. Restore rejects unsafe paths, verifies restored databases, removes partial restores on failure and refuses to overwrite an existing destination.
+The archive contains the auth database and every tenant database. It includes an internal manifest and a sidecar SHA-256 manifest. Verification checks archive digest, file list, bounded archive sizes, per-database digest and SQLite integrity. Restore rejects unsafe paths, verifies restored databases, removes partial restores on failure and refuses to overwrite an existing destination. Archive members are restricted to the exact auth database and 64-hex tenant database naming scheme; Windows drive-qualified paths, backslashes and unexpected members are rejected before extraction.
 
 Windows Docker scripts:
 - `scripts/deploy-production.ps1` — guarded config/build/start and internal plus external HTTPS health checks.
@@ -75,9 +75,10 @@ This exercise passes in the local Python test environment. It is not a substitut
 
 | Check | Result |
 |---|---|
-| Python unit/integration suite | 121 tests passed locally |
+| Python unit/integration suite | 138 tests passed locally |
 | Auth + recovery module statement coverage | 96% locally (auth 99%, recovery 92%); CI enforces at least 90% |
-| Whole Python package branch-inclusive coverage | 79%; the 90% CI gate is scoped to the security-critical auth/recovery modules, not the entire package |
+| Full-run repository coverage | 91% branch-inclusive aggregate across instrumented source and test modules; this includes test modules and is not a source-only package metric. |
+| CI coverage gate | Enforces at least 90% statement coverage on authentication and workspace recovery modules. |
 | Python compileall | Passed |
 | Detection evaluation | 30/30 curated fixtures; not production accuracy |
 | Bandit source scan | Zero findings |
@@ -88,9 +89,10 @@ This exercise passes in the local Python test environment. It is not a substitut
 | Terraform secure validate | Passed |
 | Terraform vulnerable-fixture validate | Passed |
 | Local and production Compose config | Parsed successfully; production topology assertions passed (no app host port, internal backend, bootstrap secret isolated to app) |
-| PowerShell deployment/backup/restore scripts | All three parsed successfully |
-| Local Docker image build | Not run: Docker Desktop Linux engine unavailable |
-| Production host / public HTTPS | Not deployed: no approved host/domain supplied |
+| PowerShell deployment/backup/restore scripts | Parsed successfully |
+| Local Docker engine | Not available on this workstation; Docker Desktop/Engine is not installed, so no local image run or container recovery drill was possible. |
+| Public production deployment | Not performed: no approved host/domain, DNS/firewall, or deployment owner was supplied. |
+
 | Live AWS/Azure calls | Not run |
 
 The dependency audit was run against the project's pinned `requirements-cloud.lock` (no known vulnerabilities). A separate audit of the global Windows Python environment reported unrelated packages outside this repository and is not treated as a CloudShield dependency finding.
@@ -99,7 +101,7 @@ The dependency audit was run against the project's pinned `requirements-cloud.lo
 
 1. **Enterprise identity:** MFA/WebAuthn, OIDC/SAML SSO, verified email, self-service password reset and device/session management UI are not implemented.
 2. **Independent security assurance:** penetration test and independent tenant-isolation review are required before public launch.
-3. **Real production deployment:** supply a host, DNS domain, firewall policy and deployment owner; configure the private .env.production file and run the Caddy stack. The local Docker daemon was unavailable, so CI image build remains the next container execution proof.
+3. **Real production deployment:** supply an approved host, DNS domain, firewall policy and deployment owner; configure the private .env.production file and run the Caddy stack. Compose configuration and network/secret-isolation assertions pass, and the earlier GitHub Actions container build passed, but this workstation has no Docker Engine and no public host was supplied, so the production stack has not been started or exercised end to end.
 4. **Operations:** configure central monitoring/alerting, external append-only audit export, secret manager, automated encrypted off-host backup and incident-response ownership.
 5. **Production recovery:** run the supplied backup/recovery scripts against the actual host and independently stored backup media; record RPO/RTO.
 6. **Cloud providers:** tenant-specific AWS/Azure identity onboarding, permissions and validation remain disabled until that design exists. Do not reuse a global cloud credential across workspaces.

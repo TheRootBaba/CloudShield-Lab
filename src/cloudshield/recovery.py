@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import sqlite3
 import tempfile
@@ -39,6 +40,24 @@ def _integrity(path: Path) -> str:
         return str(db.execute("PRAGMA integrity_check").fetchone()[0])
     finally:
         db.close()
+
+
+def _safe_archive_member(name: str) -> bool:
+    """Allow only the exact workspace database layout on every host OS."""
+    if not isinstance(name, str) or not name or len(name) > 160:
+        return False
+    if chr(92) in name or ":" in name or chr(0) in name:
+        return False
+    path = PurePosixPath(name)
+    if path.is_absolute() or path.as_posix() != name or any(part in {"", ".", ".."} for part in path.parts):
+        return False
+    if name == "auth.sqlite3":
+        return True
+    return (
+        len(path.parts) == 2
+        and path.parts[0] == "tenants"
+        and re.fullmatch("[a-f0-9]{64}[.]sqlite3", path.parts[1]) is not None
+    )
 
 
 def backup_workspace_set(auth_database: str | Path, tenant_directory: str | Path, destination: str | Path) -> dict:
@@ -115,10 +134,11 @@ def verify_workspace_backup(archive_path: str | Path, manifest_path: str | Path 
                 errors.append("Archive contains too many entries")
             if len(names) != len(set(names)):
                 errors.append("Archive contains duplicate paths")
-            for name in names:
-                path = PurePosixPath(name)
-                if path.is_absolute() or ".." in path.parts or "\\" in name:
-                    errors.append("Archive contains an unsafe path")
+            for info in infos:
+                if info.filename == "workspace-manifest.json":
+                    continue
+                if not _safe_archive_member(info.filename):
+                    errors.append("Archive contains an unsafe or unexpected path")
                     break
             if any(info.file_size > MAX_DATABASE_BYTES for info in infos):
                 errors.append("Archive contains a database larger than the configured safety limit")
@@ -133,22 +153,32 @@ def verify_workspace_backup(archive_path: str | Path, manifest_path: str | Path 
                 if internal.get("manifest_version") != VERSION or not isinstance(internal.get("files"), list):
                     errors.append("Internal workspace manifest is invalid")
                 else:
-                    expected = {entry.get("path"): entry for entry in internal["files"] if isinstance(entry, dict)}
+                    entries = internal["files"]
+                    valid_entries = (
+                        all(isinstance(entry, dict) and isinstance(entry.get("path"), str) for entry in entries)
+                        and len({entry["path"] for entry in entries}) == len(entries)
+                        and all(_safe_archive_member(entry["path"]) for entry in entries)
+                        and any(entry["path"] == "auth.sqlite3" for entry in entries)
+                    )
+                    if not valid_entries:
+                        errors.append("Internal workspace manifest contains unsafe or duplicate database paths")
+                    expected = {entry["path"]: entry for entry in entries if isinstance(entry, dict) and isinstance(entry.get("path"), str)}
                     actual = set(names) - {"workspace-manifest.json"}
                     if actual != set(expected):
                         errors.append("Archive file list does not match internal manifest")
-                    with tempfile.TemporaryDirectory(prefix="cloudshield-verify-") as temp:
-                        for name, record in expected.items():
-                            if name not in actual:
-                                continue
-                            target = Path(temp) / Path(name)
-                            target.parent.mkdir(parents=True, exist_ok=True)
-                            with archive.open(name, "r") as source, target.open("xb") as output:
-                                shutil.copyfileobj(source, output, length=1024 * 1024)
-                            if target.stat().st_size != record.get("size_bytes") or _sha256(target) != record.get("sha256"):
-                                errors.append(f"File digest/size mismatch: {name}")
-                            if _integrity(target) != "ok":
-                                errors.append(f"SQLite integrity failure: {name}")
+                    if valid_entries:
+                        with tempfile.TemporaryDirectory(prefix="cloudshield-verify-") as temp:
+                            for name, record in expected.items():
+                                if name not in actual:
+                                    continue
+                                target = Path(temp).joinpath(*PurePosixPath(name).parts)
+                                target.parent.mkdir(parents=True, exist_ok=True)
+                                with archive.open(name, "r") as source, target.open("xb") as output:
+                                    shutil.copyfileobj(source, output, length=1024 * 1024)
+                                if target.stat().st_size != record.get("size_bytes") or _sha256(target) != record.get("sha256"):
+                                    errors.append(f"File digest/size mismatch: {name}")
+                                if _integrity(target) != "ok":
+                                    errors.append(f"SQLite integrity failure: {name}")
                     if sidecar.get("database_count") != len(expected):
                         errors.append("Database count mismatch")
     except (OSError, sqlite3.Error, zipfile.BadZipFile, KeyError, json.JSONDecodeError, RuntimeError, AttributeError) as exc:
@@ -168,8 +198,8 @@ def restore_workspace_set(archive_path: str | Path, destination: str | Path, man
         with zipfile.ZipFile(archive_path, "r") as archive:
             for name in archive.namelist():
                 path = PurePosixPath(name)
-                allowed = name in {"auth.sqlite3", "workspace-manifest.json"} or (len(path.parts) == 2 and path.parts[0] == "tenants" and path.name.endswith(".sqlite3"))
-                if path.is_absolute() or ".." in path.parts or "\\" in name or not allowed:
+                allowed = name == "workspace-manifest.json" or _safe_archive_member(name)
+                if not allowed:
                     raise ValueError("Unsafe or unexpected archive path")
                 target = destination.joinpath(*path.parts)
                 target.parent.mkdir(parents=True, exist_ok=True)

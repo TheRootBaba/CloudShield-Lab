@@ -77,6 +77,21 @@ class RecoveryEdgeCaseTests(unittest.TestCase):
         self.assertFalse(result["valid"])
         self.assertTrue(any("unsafe" in error.lower() for error in result["errors"]))
 
+    def test_verify_rejects_windows_drive_and_unexpected_archive_paths(self):
+        for member in ("C:/Windows/Temp/escape.sqlite3", "tenants/./" + ("a" * 64) + ".sqlite3", "tenants/not-a-tenant.sqlite3", "secrets.txt"):
+            with self.subTest(member=member):
+                with zipfile.ZipFile(self.archive, "w") as archive:
+                    archive.writestr(member, b"not a database")
+                    archive.writestr("workspace-manifest.json", json.dumps({
+                        "manifest_version": "1.0", "files": []
+                    }))
+                self._sidecar(self.archive)
+                result = verify_workspace_backup(self.archive)
+                self.assertFalse(result["valid"])
+                self.assertTrue(any("unsafe" in error.lower() for error in result["errors"]))
+                self.archive.unlink()
+                Path(str(self.archive) + ".manifest.json").unlink()
+
     def test_manifest_write_failure_removes_partial_archive(self):
         original_open = Path.open
         def fail_outer_manifest(path, *args, **kwargs):
