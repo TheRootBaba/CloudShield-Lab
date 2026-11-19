@@ -49,7 +49,11 @@ class ApiIntegrationTests(unittest.TestCase):
         api.validate_bind_host("::1")
         with self.assertRaises(RuntimeError):
             api.validate_bind_host("0.0.0.0")
-        api.validate_bind_host("0.0.0.0", container_mode=True)
+        from unittest.mock import patch
+        with patch.object(api.Path, "exists", return_value=True):
+            api.validate_bind_host("0.0.0.0", container_mode=True)
+        with self.assertRaises(RuntimeError):
+            api.validate_bind_host("0.0.0.0", container_mode=True)
         with self.assertRaises(RuntimeError):
             api.validate_bind_host("::", container_mode=True)
         with self.assertRaises(RuntimeError):

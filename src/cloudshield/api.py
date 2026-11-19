@@ -432,8 +432,9 @@ def validate_bind_host(host: str, container_mode: bool = False) -> None:
         is_loopback = ipaddress.ip_address(host).is_loopback
     except ValueError:
         is_loopback = False
-    # The sole wildcard-bind exception is the supplied container profile; Compose maps its host port to 127.0.0.1 only.
-    if not is_loopback and not (container_mode and host == "0.0.0.0"):  # nosec B104
+    # Require both the explicit profile flag and a container runtime marker; Compose maps host port to 127.0.0.1 only.
+    in_container = Path("/.dockerenv").exists() or Path("/run/.containerenv").exists()
+    if not is_loopback and not (container_mode and in_container and host == "0.0.0.0"):  # nosec B104
         raise RuntimeError(
             "CloudShield may bind only to loopback unless CLOUDSHIELD_CONTAINER_MODE=1 is set inside the supplied container. "
             "The container must publish its host port on 127.0.0.1 only; this app is single-tenant and not approved for public exposure."
