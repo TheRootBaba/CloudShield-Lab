@@ -1,0 +1,90 @@
+services:
+  cloudshield:
+    build: .
+    image: cloudshield-lab:release
+    restart: unless-stopped
+    environment:
+      CLOUDSHIELD_BOOTSTRAP_TOKEN: ${CLOUDSHIELD_BOOTSTRAP_TOKEN:-}
+      CLOUDSHIELD_ENABLE_AWS_COLLECTOR: "0"
+      CLOUDSHIELD_ENABLE_AWS_INVENTORY: "0"
+      CLOUDSHIELD_ENABLE_AZURE_COLLECTION: "0"
+      CLOUDSHIELD_HOST: "0.0.0.0"
+      CLOUDSHIELD_PORT: "8765"
+      CLOUDSHIELD_CONTAINER_MODE: "1"
+      CLOUDSHIELD_AUTH_MODE: "multi_user"
+      CLOUDSHIELD_COOKIE_SECURE: "1"
+      CLOUDSHIELD_DB: "/data/legacy.sqlite3"
+      CLOUDSHIELD_AUTH_DB: "/data/auth.sqlite3"
+      CLOUDSHIELD_TENANT_DIR: "/data/tenants"
+      CLOUDSHIELD_HTTP_LOG: "0"
+    expose:
+      - "8765"
+    volumes:
+      - cloudshield-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/api/health', timeout=3).read()"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - backend
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    environment:
+      CLOUDSHIELD_DOMAIN: ${CLOUDSHIELD_DOMAIN:-cloudshield.example.com}
+      CLOUDSHIELD_TLS_EMAIL: ${CLOUDSHIELD_TLS_EMAIL:-ops@example.com}
+    depends_on:
+      cloudshield:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    healthcheck:
+      test: ["CMD", "caddy", "validate", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - edge
+      - backend
+
+volumes:
+  cloudshield-data:
+  caddy-data:
+  caddy-config:
+
+networks:
+  edge:
+    driver: bridge
+  backend:
+    driver: bridge
+    internal: true

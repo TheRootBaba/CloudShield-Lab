@@ -8,6 +8,7 @@ CloudShield is an engineering lab and portfolio project. It is not a production 
 
 - Responsive security command center: overview, incidents, detections, relationship paths, evidence vault, data sources and rule library.
 - Local HTTP API backed by the detection pipeline and SQLite evidence store.
+- Optional browser authentication with scrypt password hashes, 12-hour revocable sessions, CSRF protection, role-based authorization, workspace invitations and separate SQLite evidence databases per workspace.
 - CloudTrail and AWS Security Hub event normalization, plus Azure Activity Log normalization.
 - Explainable detections for selected IAM, S3, EC2/network, CloudTrail, KMS, Lambda and RDS event patterns.
 - Offline synthetic scenarios, including a four-step multi-stage sequence. Synthetic source provenance is retained.
@@ -50,7 +51,7 @@ Live collection is off by default and is a one-shot, read-only lookup. It uses t
 1. Install the optional dependency: **python -m pip install -e ".[aws]"**.
 2. Configure a local AWS profile or environment credentials with only cloudtrail:LookupEvents.
 3. Explicitly enable the feature in the server process: **$env:CLOUDSHIELD_ENABLE_AWS_COLLECTOR="1"**
-4. Start the app again and open **Data sources â†’ AWS CloudTrail**. Choose a region and lookback up to 24 hours.
+4. Start the app again and open **Data sources / AWS CloudTrail**. Choose a region and lookback up to 24 hours.
 
 The collector reads up to five pages of 50 events (250 maximum per run), does not poll continuously, and makes no AWS write calls. AWS API usage and related services may incur charges under your account. Do not use root credentials. No AWS resources are created by the local API.
 
@@ -69,15 +70,15 @@ See docs/DETECTION_COVERAGE.md for rule IDs and supported patterns.
 - SHA-256 fingerprints detect content changes relative to a known digest; they are not digital signatures, trusted timestamps, or proof of source authenticity.
 - Analyst workflow per incident: status transitions, priority, assignee, and append-only activity notes.
 - Portable incident evidence bundles containing incident/event/finding digests, workflow history and a bundle manifest; verifier checks hash integrity and timeline references.
-- The SQLite store is single-user and local, not a multi-tenant production database. Workflow actor names are user-supplied and are not authenticated. Evidence bundle hashes are tamper-evident only relative to a trusted copy of the manifest. Phase 12 adds optional detached Ed25519 signatures when a trusted public key is supplied independently; signatures do not establish source truth or trusted time.
+- Legacy loopback mode remains single-user. Optional multi-user mode partitions each workspace into a separate SQLite evidence database and derives tenant scope from the authenticated server-side session. Workflow actors are authenticated in multi-user mode; local-mode actor names remain user-supplied. Evidence bundle hashes are tamper-evident only relative to a trusted copy of the manifest. Phase 12 adds optional detached Ed25519 signatures when a trusted public key is supplied independently; signatures do not establish source truth or trusted time.
 
 ## Security and operational defaults
 
-The server binds to 127.0.0.1 and rejects non-loopback bind addresses at startup. Uploaded JSON is treated as untrusted input; the API enforces a 2 MiB JSON-object body limit, content-type/length checks, cross-origin Origin rejection, per-IP request limits and restrictive browser security headers. Mutating API operations are recorded in a local SQLite security audit table.
+The server binds to 127.0.0.1 and rejects non-loopback bind addresses at startup. Uploaded JSON is treated as untrusted input; the API enforces a 2 MiB JSON-object body limit, content-type/length checks, cross-origin Origin rejection, request limits keyed to the TCP peer (forwarded headers are not trusted) and restrictive browser security headers. Mutating API operations are recorded in a local SQLite security audit table.
 
-Optional API role tokens can be configured with unique `CLOUDSHIELD_ADMIN_TOKEN`, `CLOUDSHIELD_RESPONDER_TOKEN`, and `CLOUDSHIELD_ANALYST_TOKEN` values (each at least 32 characters). When any role token is configured, API requests other than `/api/health` require `Authorization: Bearer <token>`. Analysts can read and verify bundles; responders can change workflow, add notes, ingest and simulate; only admins can invoke the opt-in AWS collector. Tokens are long-lived environment secrets and must not be committed. When no tokens are configured, the app remains unauthenticated in loopback-only local mode.
+Legacy local mode supports optional API role tokens. For browser accounts and tenant isolation, set CLOUDSHIELD_AUTH_MODE=multi_user; the first account becomes the initial administrator and subsequent users join via single-use invitations. Passwords use scrypt hashes, sessions are HttpOnly/SameSite cookies with 12-hour expiry, and state-changing requests require CSRF validation. Administrators can invite analysts/responders, create separate workspaces and revoke member access. See docs/MULTI_USER_AUTH.md. The production Compose profile enables multi-user auth and Secure cookies by default and requires a unique `CLOUDSHIELD_BOOTSTRAP_TOKEN` (at least 32 characters) to protect first-admin registration. The setup key is passed only to the app container, not Caddy.
 
-**Do not expose the Python listener directly to a LAN or public network.** The React UI does not yet implement a login/token lifecycle, and this project is not multi-tenant. Remote access requires a separately hardened HTTPS/VPN reverse proxy and server-side identity/token injection, plus the external controls listed in `docs/SECURITY_THREAT_MODEL.md` and `docs/RELEASE_ASSURANCE.md`. API tokens alone do not make a hosted deployment production-ready.
+**Do not expose the Python listener directly to a LAN or public network.** The production profile places Caddy HTTPS ingress in front of the private API and requires multi-user auth. It is a single-host deployment template, not an HA SaaS platform. MFA/SSO, email verification, password recovery, external managed secrets/audit, monitoring, independent penetration testing and live cloud validation remain release gates. Do not enable shared server-side cloud credentials in multi-user mode; provider collectors are deliberately blocked until identities are tenant-scoped.
 
 No cloud collection, resource creation, remediation or cloud writes happen unless an operator explicitly enables a read-only provider collector. Keep both provider toggles disabled for the offline $0 setup. Terraform examples remain separate and opt-in.
 
@@ -93,7 +94,7 @@ See docs/PHASE_9_INCIDENT_RESPONSE.md and docs/PHASE_10_EVIDENCE_BUNDLES.md for 
 
 ## Detection evaluation (Phase 11)
 
-Run **cloudshield evaluate fixtures/detection_evaluation.json** to calculate per-rule and micro-averaged precision, recall, specificity and F1. The included 26-case labelled corpus currently passes 26/26 cases. These are deterministic fixture results only, not estimates of production false-positive or false-negative rates. See docs/PHASE_11_DETECTION_EVALUATION.md.
+Run **cloudshield evaluate fixtures/detection_evaluation.json** to calculate per-rule and micro-averaged precision, recall, specificity and F1. The included 30-case labelled corpus currently passes 30/30 cases. These are deterministic fixture results only, not estimates of production false-positive or false-negative rates. See docs/PHASE_11_DETECTION_EVALUATION.md.
 
 ## Signed evidence bundles (Phase 12)
 
@@ -101,11 +102,11 @@ Install the optional signing dependency with **python -m pip install -e ".[signi
 
 ## Optional read-only AWS inventory (Phase 13)
 
-Install boto3 with **python -m pip install -e ".[aws]"**, then explicitly set **$env:CLOUDSHIELD_ENABLE_AWS_INVENTORY="1"** before running **cloudshield aws-inventory --regions us-east-1 --max-pages 1 --output artifacts/aws-inventory.json**. The command is disabled by default, accepts only 1â€“5 explicit regions, and caps pagination. It lists selected resource metadata only; it is not complete organization-wide discovery. Tests use mocked clients and do not contact AWS. Review docs/PHASE_13_AWS_INVENTORY.md and approve the sandbox/cost boundary before a live run.
+Install boto3 with **python -m pip install -e ".[aws]"**, then explicitly set **$env:CLOUDSHIELD_ENABLE_AWS_INVENTORY="1"** before running **cloudshield aws-inventory --regions us-east-1 --max-pages 1 --output artifacts/aws-inventory.json**. The command is disabled by default, accepts only 1–5 explicit regions, and caps pagination. It lists selected resource metadata only; it is not complete organization-wide discovery. Tests use mocked clients and do not contact AWS. Review docs/PHASE_13_AWS_INVENTORY.md and approve the sandbox/cost boundary before a live run.
 
 ## Phase 14 offline hardening
 
-Incident graph correlations now require explicit evidence, avoid ambiguous duplicate event IDs, cap valid timestamp gaps at 24 hours and mark sequence edges as non-causal. Later Phase 15 work adds optional API role-token authentication and authorization; browser login, tenant isolation and hosted security remain external gates. See docs/ATTACK_PATH_CORRELATION.md and docs/SECURITY_THREAT_MODEL.md.
+Incident graph correlations now require explicit evidence, avoid ambiguous duplicate event IDs, cap valid timestamp gaps at 24 hours and mark sequence edges as non-causal. Optional multi-user browser auth and tenant-isolated workspaces are documented in docs/MULTI_USER_AUTH.md; enterprise identity and independent assurance remain external gates. See docs/ATTACK_PATH_CORRELATION.md and docs/SECURITY_THREAT_MODEL.md.
 
 ## Terraform safety
 
@@ -121,12 +122,25 @@ MIT License.
 
 ## Offline completion and handoff
 
-See docs/OFFLINE_COMPLETION.md for the offline verification snapshot. The Phase 15?20 delivery and provider expansion are documented in `docs/PHASES_15_20_REPORT.md` and `docs/PROVIDER_EXPANSION_REPORT.md`. See `docs/AZURE_PROVIDER.md`, `docs/TRUSTED_TIMESTAMPING.md`, and `docs/RELEASE_ASSURANCE.md` for current capabilities and remaining external gates.
+See docs/OFFLINE_COMPLETION.md for the offline verification snapshot. Phase 15–20 delivery and provider expansion are documented in docs/PHASES_15_20_REPORT.md and docs/PROVIDER_EXPANSION_REPORT.md. Browser authentication and tenant isolation are described in docs/MULTI_USER_AUTH.md; production ingress and workspace recovery are in docs/DEPLOYMENT_OPERATIONS.md and docs/FINALIZATION_RUNBOOK.md.
 
 ## Containerized local run
 
-Docker Compose is provided for a local-only deployment. It runs as a non-root user, uses a read-only container filesystem with a persistent data volume, drops Linux capabilities, and publishes only `127.0.0.1:8765` on the host. Build and start with `docker compose up --build -d`, then open `http://127.0.0.1:8765`. Stop with `docker compose down`; preserve the named volume unless intentionally deleting local evidence. Do not change the port binding to `0.0.0.0` or expose this single-user UI to a LAN/public network. See `docs/DEPLOYMENT_OPERATIONS.md`.
+Docker Compose is provided for a local-only deployment. It runs as a non-root user, uses a read-only container filesystem with a persistent data volume, drops Linux capabilities, and publishes only `127.0.0.1:8765` on the host. Build and start with `docker compose up --build -d`, then open `http://127.0.0.1:8765`. Stop with `docker compose down`; preserve the named volume unless intentionally deleting local evidence. Do not change the local profile port binding to 0.0.0.0. The separate production profile is the only supported non-loopback template and requires HTTPS plus multi-user auth; see docs/DEPLOYMENT_OPERATIONS.md.
 
 ## SQLite backup and restore
 
 Create a consistent online backup and SHA-256 manifest with `cloudshield backup --database artifacts/evidence.sqlite3 --output artifacts/backups/evidence-2026-11-19.sqlite3`. Verify it with `cloudshield verify-backup artifacts/backups/evidence-2026-11-19.sqlite3`; restore only to a new path with `cloudshield restore-backup artifacts/backups/evidence-2026-11-19.sqlite3 --destination artifacts/restore/evidence.sqlite3`. Verification checks the manifest digest and SQLite integrity. Store/sign the manifest independently for protection against an attacker who can modify both files.
+
+
+## Multi-user browser sign-in and workspace isolation
+
+For a local multi-user trial, set CLOUDSHIELD_AUTH_MODE=multi_user before starting the API. The first registered account becomes the administrator. Use the Team control to invite users or create a separate workspace. Each workspace has its own SQLite database; the server selects it from the signed-in session. See docs/MULTI_USER_AUTH.md for configuration, roles, invitation and security limitations.
+
+## Production HTTPS deployment
+
+compose.production.yaml runs the application on an internal-only Docker network behind Caddy; only Caddy is attached to the public edge network. Copy .env.production.example to .env.production, configure a real DNS name and TLS contact, generate a unique bootstrap key with `python -c "import secrets; print(secrets.token_urlsafe(48))"`, and store it in the private environment file. Validate/deploy with `docker compose --env-file .env.production -f compose.production.yaml config --quiet` and `docker compose --env-file .env.production -f compose.production.yaml up --build -d`. On Windows, `scripts/deploy-production.ps1` performs config/build/start plus internal and external HTTPS health checks. The app API port is not published. Do not deploy with the sample domain or without DNS, inbound 80/443, host firewall, secret-file ACLs, monitoring and independent security review. Production deployment and recovery procedures are in docs/DEPLOYMENT_OPERATIONS.md.
+
+## Multi-workspace backup and recovery
+
+Back up the authentication database and all tenant databases together with cloudshield backup-workspaces --auth-database artifacts/auth.sqlite3 --tenant-directory artifacts/tenants --output artifacts/backups/cloudshield-workspaces.zip. Verify with cloudshield verify-workspaces and restore to a new directory with cloudshield restore-workspaces. Quiesce writes for a consistent snapshot and store the archive plus manifest off-host. Windows Docker operators can use `scripts/backup-production.ps1` (stops the app briefly for a consistent auth+tenant snapshot and restarts it) and `scripts/recovery-drill.ps1` (verifies/restores to an isolated new directory). `scripts/deploy-production.ps1` performs a guarded deployment and HTTPS health check.

@@ -107,7 +107,7 @@ CloudShield Lab is a local-first defensive engineering lab. A checked item means
 - [ ] Real AWS sandbox validation of CloudTrail and inventory using a dedicated account, least-privilege role and approved cost boundary.
 - [ ] Broader inventory (VPCs, subnets, load balancers, RDS, Lambda, KMS, EBS, policies/configuration) and organization-account discovery.
 - [ ] Representative production detection tuning and measured false-positive/false-negative rates.
-- [ ] Authentication, authorization, CSRF protection, secret management, rate limiting, audit logging and deployment hardening before any LAN/hosted exposure. Non-loopback binds are now rejected; the app remains intentionally single-user/local-only.
+- [x] Core browser authentication, server-side roles, CSRF, invitation-only multi-user workspaces, rate limits and local auth audit. Separate HTTPS production profile is authored; enterprise identity and external assurance remain open.
 - [ ] Independent trusted timestamping or immutable evidence storage.
 - [ ] Full causal attack-path analysis only after trustworthy identity, network and resource relationship data exists. Current Phase 14 graph is correlation-only; see `docs/ATTACK_PATH_CORRELATION.md`.
 
@@ -139,7 +139,8 @@ See OFFLINE_COMPLETION.md for the handoff and local start instructions.
 - [x] Cross-origin Origin rejection for writes and restrictive security response headers.
 - [x] SQLite mutation audit entries for workflow, notes, ingest, simulation and AWS collector invocation.
 - [x] Threat model and explicit residual-risk/deployment boundary.
-- [ ] Browser UI login/token lifecycle, MFA/SSO, expiring/revocable sessions, tenant isolation, distributed rate limiting and independent penetration test.
+- [x] Browser login, 12-hour revocable sessions, tenant database isolation and invitation workflows.
+- [ ] MFA/SSO, verified email, password recovery, distributed rate limiting, independent tenant-isolation review and penetration test.
 
 ### Phase 16 ? evidence custody
 - [x] Versioned bundle v1.1, producer/export metadata, collection scope and source-format provenance.
@@ -182,6 +183,6 @@ See `docs/PHASES_15_20_REPORT.md` for the exact delivery status and `docs/RELEAS
 - [x] Add a local-only hardened Docker Compose profile and CI container-build job.
 - [x] Document optional RFC 3161 trusted timestamping and WORM archive design.
 - [ ] Live AWS/Azure validation remains dependent on active accounts, least-privilege credentials and separately approved API/cost boundaries.
-- [ ] Browser login/session lifecycle, multi-tenancy, external penetration test, hosted monitoring, production load test and independent incident/restore exercises remain external release gates.
+- [ ] MFA/SSO, email verification, password recovery, independent penetration test, hosted monitoring, production load test, provider tenant identities and production-host restore exercise remain external release gates.
 
 See `docs/PROVIDER_EXPANSION_REPORT.md` for implementation detail and exact verification results.

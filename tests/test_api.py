@@ -44,6 +44,24 @@ class ApiIntegrationTests(unittest.TestCase):
         self.assertEqual("azure", response["provider"])
         self.assertEqual(1, len(self.get("/api/findings")))
 
+
+    def test_non_loopback_deployment_requires_multi_user_and_secure_cookies(self):
+        import os
+        from unittest.mock import patch
+        with patch.dict(os.environ, {"CLOUDSHIELD_AUTH_MODE": "", "CLOUDSHIELD_COOKIE_SECURE": "0"}):
+            with self.assertRaises(RuntimeError):
+                api.validate_deployment_security("0.0.0.0")
+        with patch.dict(os.environ, {"CLOUDSHIELD_AUTH_MODE": "multi_user", "CLOUDSHIELD_COOKIE_SECURE": "0"}):
+            with self.assertRaises(RuntimeError):
+                api.validate_deployment_security("0.0.0.0")
+        with patch.dict(os.environ, {"CLOUDSHIELD_AUTH_MODE": "multi_user", "CLOUDSHIELD_COOKIE_SECURE": "1", "CLOUDSHIELD_BOOTSTRAP_TOKEN": ""}):
+            with self.assertRaises(RuntimeError):
+                api.validate_deployment_security("0.0.0.0")
+        with patch.dict(os.environ, {"CLOUDSHIELD_AUTH_MODE": "multi_user", "CLOUDSHIELD_COOKIE_SECURE": "1", "CLOUDSHIELD_BOOTSTRAP_TOKEN": "S" * 48}):
+            api.validate_deployment_security("0.0.0.0")
+        with patch.dict(os.environ, {"CLOUDSHIELD_AUTH_MODE": "", "CLOUDSHIELD_COOKIE_SECURE": "0"}):
+            api.validate_deployment_security("127.0.0.1")
+
     def test_bind_host_must_be_loopback(self):
         api.validate_bind_host("127.0.0.1")
         api.validate_bind_host("::1")

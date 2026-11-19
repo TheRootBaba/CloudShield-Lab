@@ -89,6 +89,17 @@ def main(argv=None):
     rb.add_argument("file")
     rb.add_argument("--manifest")
     rb.add_argument("--destination", required=True)
+    bws = sub.add_parser("backup-workspaces", help="Create a verified archive of auth and all tenant databases")
+    bws.add_argument("--auth-database", default="artifacts/auth.sqlite3")
+    bws.add_argument("--tenant-directory", default="artifacts/tenants")
+    bws.add_argument("--output", required=True)
+    vws = sub.add_parser("verify-workspaces", help="Verify a workspace-set recovery archive")
+    vws.add_argument("file")
+    vws.add_argument("--manifest")
+    rws = sub.add_parser("restore-workspaces", help="Restore a workspace-set archive into a new directory")
+    rws.add_argument("file")
+    rws.add_argument("--manifest")
+    rws.add_argument("--destination", required=True)
     args = p.parse_args(argv)
 
     if args.command == "analyze":
@@ -161,6 +172,18 @@ def main(argv=None):
     elif args.command == "restore-backup":
         from .backup import restore_backup
         result = restore_backup(args.file, args.destination, args.manifest)
+    elif args.command == "backup-workspaces":
+        from .recovery import backup_workspace_set
+        result = backup_workspace_set(args.auth_database, args.tenant_directory, args.output)
+    elif args.command == "verify-workspaces":
+        from .recovery import verify_workspace_backup
+        result = verify_workspace_backup(args.file, args.manifest)
+        if not result["valid"]:
+            print(json.dumps(result, indent=2, sort_keys=True))
+            return 1
+    elif args.command == "restore-workspaces":
+        from .recovery import restore_workspace_set
+        result = restore_workspace_set(args.file, args.destination, args.manifest)
     elif args.command in {"azure-inventory", "azure-activity-logs"}:
         if os.environ.get("CLOUDSHIELD_ENABLE_AZURE_COLLECTION") != "1":
             raise SystemExit("Azure collection is disabled. Set CLOUDSHIELD_ENABLE_AZURE_COLLECTION=1 to explicitly opt in.")
