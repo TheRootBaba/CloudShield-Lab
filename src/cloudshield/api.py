@@ -30,6 +30,7 @@ WEB = ROOT / "web"
 DB_PATH = Path(os.environ.get("CLOUDSHIELD_DB", str(ROOT / "artifacts" / "evidence.sqlite3")))
 _CURRENT_DB = ContextVar("cloudshield_tenant_db", default=None)
 _AUTH_STORE = None
+_FIREBASE_APP = None
 
 def _db_path():
     return _CURRENT_DB.get() or DB_PATH
@@ -44,6 +45,48 @@ def _auth_store():
         tenant_root = Path(os.environ.get("CLOUDSHIELD_TENANT_DIR", str(ROOT / "artifacts" / "tenants")))
         _AUTH_STORE = AuthStore(auth_db, tenant_root)
     return _AUTH_STORE
+
+def _firebase_public_config():
+    provider = os.environ.get("CLOUDSHIELD_AUTH_PROVIDER", "local").strip().lower()
+    return {
+        "provider": provider,
+        "firebase": {
+            "apiKey": os.environ.get("CLOUDSHIELD_FIREBASE_API_KEY", ""),
+            "authDomain": os.environ.get("CLOUDSHIELD_FIREBASE_AUTH_DOMAIN", ""),
+            "projectId": os.environ.get("CLOUDSHIELD_FIREBASE_PROJECT_ID", ""),
+            "appId": os.environ.get("CLOUDSHIELD_FIREBASE_APP_ID", ""),
+            "messagingSenderId": os.environ.get("CLOUDSHIELD_FIREBASE_MESSAGING_SENDER_ID", ""),
+        },
+    }
+
+
+def _verify_firebase_id_token(id_token: str) -> dict:
+    """Verify Firebase-issued browser ID tokens; never trust client-supplied identity fields."""
+    global _FIREBASE_APP
+    if not isinstance(id_token, str) or not id_token or len(id_token) > 16_384:
+        raise PermissionError("A valid Firebase sign-in token is required")
+    project_id = os.environ.get("CLOUDSHIELD_FIREBASE_PROJECT_ID", "").strip()
+    credential_path = (os.environ.get("CLOUDSHIELD_FIREBASE_CREDENTIALS")
+                       or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")).strip()
+    if not project_id or not credential_path:
+        raise RuntimeError("Firebase authentication is not configured on this server")
+    try:
+        import firebase_admin
+        from firebase_admin import auth as firebase_auth, credentials
+        if _FIREBASE_APP is None:
+            try:
+                _FIREBASE_APP = firebase_admin.get_app("cloudshield")
+            except ValueError:
+                credential = credentials.Certificate(credential_path)
+                _FIREBASE_APP = firebase_admin.initialize_app(
+                    credential, {"projectId": project_id}, name="cloudshield")
+        return firebase_auth.verify_id_token(id_token, app=_FIREBASE_APP, check_revoked=True)
+    except RuntimeError:
+        raise
+    except Exception as exc:
+        # Keep provider diagnostics out of the public response.
+        raise PermissionError("Firebase sign-in could not be verified. Sign in again.") from exc
+
 
 def _client_ip(handler):
     """Use the TCP peer for rate limiting and audit attribution.
@@ -270,7 +313,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
         self.send_header("Cache-Control", "no-store")
-        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
+        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
         for name, value in (extra_headers or []): self.send_header(name, value)
         self.end_headers()
         self.wfile.write(body)
@@ -312,6 +355,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def _auth_get(self, path):
         store = _auth_store()
+        if path == "/api/auth/config":
+            config = _firebase_public_config()
+            firebase = config["firebase"]
+            configured = all(firebase.values())
+            return self._send(200, {"provider": config["provider"], "firebase": firebase,
+                                    "configured": configured if config["provider"] == "firebase" else True})
         if path == "/api/auth/status":
             bootstrap_required = store.bootstrap_required()
             return self._send(200, {"enabled": True, "bootstrap_required": bootstrap_required,
@@ -328,9 +377,37 @@ class Handler(BaseHTTPRequestHandler):
 
     def _auth_post(self, path):
         store = _auth_store()
-        if path in {"/api/auth/login", "/api/auth/register"} and not _AUTH_LIMITER.allow(_client_ip(self)):
+        if path in {"/api/auth/login", "/api/auth/register", "/api/auth/firebase"} and not _AUTH_LIMITER.allow(_client_ip(self)):
             return self._send(429, {"error":"Too many authentication attempts; try again later"})
         body = self._body()
+        provider = os.environ.get("CLOUDSHIELD_AUTH_PROVIDER", "local").strip().lower()
+        if provider == "firebase" and path in {"/api/auth/login", "/api/auth/register"}:
+            return self._send(403, {"error": "Password authentication is disabled; use Firebase Authentication"})
+        if path == "/api/auth/firebase":
+            if os.environ.get("CLOUDSHIELD_AUTH_PROVIDER", "local").strip().lower() != "firebase":
+                return self._send(404, {"error": "Firebase authentication is not enabled"})
+            claims = _verify_firebase_id_token(body.get("id_token", ""))
+            if claims.get("email_verified") is not True:
+                return self._send(403, {"error": "Verify your email address before accessing CloudShield"})
+            uid, email = claims.get("uid"), claims.get("email")
+            if not isinstance(uid, str) or not isinstance(email, str):
+                return self._send(403, {"error": "Firebase identity is missing a verified email"})
+            store = _auth_store()
+            if store.bootstrap_required():
+                bootstrap_token = os.environ.get("CLOUDSHIELD_BOOTSTRAP_TOKEN", "")
+                provided = body.get("bootstrap_token", "")
+                if bootstrap_token and (not isinstance(provided, str) or len(provided) > 128
+                        or not provided.isascii() or not bootstrap_token.isascii()
+                        or not secrets.compare_digest(provided, bootstrap_token)):
+                    return self._send(403, {"error": "A valid initial administrator setup key is required"})
+            display_name = body.get("display_name") or claims.get("name") or email.split("@", 1)[0]
+            user = store.register_firebase(uid, email, display_name, body.get("tenant_name", ""), body.get("invite_code", ""))
+            EvidenceStore(store.tenant_path(user["tenant_id"]))
+            session, token = store.login_firebase(uid)
+            store.record_audit(session, "firebase.session.created", session.email)
+            response_user = {"user_id":session.user_id,"tenant_id":session.tenant_id,"email":session.email,
+                             "display_name":session.display_name,"role":session.role,"expires_at":session.expires_at}
+            return self._auth_response(response_user, session.csrf_token, token)
         if path == "/api/auth/register":
             bootstrap_token = os.environ.get("CLOUDSHIELD_BOOTSTRAP_TOKEN", "")
             provided_bootstrap = body.get("bootstrap_token", "")
@@ -396,6 +473,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(403, {"error":str(exc)})
         except ValueError as exc:
             self._send(400, {"error":str(exc)})
+        except RuntimeError as exc:
+            self._send(503, {"error":str(exc)})
         except sqlite3.Error:
             self._send(503, {"error":"Authentication storage is temporarily unavailable"})
         return True

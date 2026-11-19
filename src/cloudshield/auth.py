@@ -115,6 +115,10 @@ class AuthStore:
             CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at);
             CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);
             """)
+            columns = {row[1] for row in db.execute("PRAGMA table_info(users)")}
+            if "firebase_uid" not in columns:
+                db.execute("ALTER TABLE users ADD COLUMN firebase_uid TEXT")
+            db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_firebase_uid ON users(firebase_uid) WHERE firebase_uid IS NOT NULL")
             db.commit()
 
     def bootstrap_required(self) -> bool:
@@ -195,6 +199,74 @@ class AuthStore:
             db.commit()
             session = Session(row["user_id"], row["tenant_id"], row["email"], row["display_name"], row["role"], csrf, expires)
             return session, session_token
+
+    def register_firebase(self, uid: str, email: str, display_name: str, tenant_name: str = "", invite: str = "") -> dict:
+        if not isinstance(uid, str) or not uid or len(uid) > 128:
+            raise ValueError("Invalid Firebase identity")
+        if not isinstance(email, str) or not isinstance(display_name, str) or not isinstance(tenant_name, str):
+            raise ValueError("Email, display name and workspace name must be text")
+        email = email.strip().lower()
+        display_name = display_name.strip()[:80]
+        local_part, separator, domain = email.partition("@")
+        if (not email or len(email) > 254 or not separator or not local_part or len(local_part) > 64
+                or not domain or "." not in domain or domain.startswith(".") or domain.endswith(".")
+                or any(character.isspace() for character in email) or not display_name):
+            raise ValueError("A verified email and display name are required")
+        if invite is not None and not isinstance(invite, str):
+            raise ValueError("Invitation code must be text")
+        if isinstance(invite, str) and len(invite) > 128:
+            raise ValueError("Invitation code is too long")
+        now = _now()
+        with _connect(self.path) as db:
+            db.execute("BEGIN IMMEDIATE")
+            existing = db.execute("SELECT user_id,tenant_id,email,display_name,role,active FROM users WHERE firebase_uid=?", (uid,)).fetchone()
+            if existing:
+                if not existing["active"]:
+                    raise PermissionError("This CloudShield account is disabled")
+                if existing["email"] != email:
+                    raise PermissionError("The verified Firebase email does not match the linked CloudShield account")
+                return {"user_id": existing["user_id"], "tenant_id": existing["tenant_id"], "email": email,
+                        "display_name": existing["display_name"], "role": existing["role"]}
+            if db.execute("SELECT 1 FROM users WHERE email=?", (email,)).fetchone():
+                raise PermissionError("An account already uses this email. Ask a workspace administrator to migrate/link it.")
+            if db.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
+                tenant_id = secrets.token_urlsafe(18)
+                clean_tenant = tenant_name.strip()[:80] or (display_name + "'s workspace")
+                db.execute("INSERT INTO tenants VALUES(?,?,?)", (tenant_id, clean_tenant, _stamp(now)))
+                role = "admin"
+            else:
+                if not invite or len(invite) > 128:
+                    raise PermissionError("A valid workspace invitation is required")
+                invite_row = db.execute("SELECT * FROM invites WHERE invite_hash=? AND used_at IS NULL AND expires_at>?",
+                                        (_hash(invite), _stamp(now))).fetchone()
+                if not invite_row:
+                    raise PermissionError("Invitation is invalid, expired or already used")
+                tenant_id, role = invite_row["tenant_id"], invite_row["role"]
+                changed = db.execute("UPDATE invites SET used_at=? WHERE invite_hash=? AND used_at IS NULL",
+                                     (_stamp(now), _hash(invite))).rowcount
+                if changed != 1:
+                    raise PermissionError("Invitation has already been used")
+            user_id = secrets.token_urlsafe(18)
+            db.execute("INSERT INTO users(user_id,tenant_id,email,display_name,password_hash,role,created_at,firebase_uid) VALUES(?,?,?,?,?,?,?,?)",
+                       (user_id, tenant_id, email, display_name, _password_hash(secrets.token_urlsafe(40)), role, _stamp(now), uid))
+            db.commit()
+        self.tenant_path(tenant_id).parent.mkdir(parents=True, exist_ok=True)
+        return {"user_id": user_id, "tenant_id": tenant_id, "email": email, "display_name": display_name, "role": role}
+
+    def login_firebase(self, uid: str) -> tuple[Session, str]:
+        now = _now()
+        with _connect(self.path) as db:
+            row = db.execute("SELECT * FROM users WHERE firebase_uid=?", (uid,)).fetchone()
+            if not row:
+                raise PermissionError("Firebase identity is not linked to a CloudShield workspace")
+            if not row["active"]:
+                raise PermissionError("This CloudShield account is disabled")
+            session_token, csrf = secrets.token_urlsafe(40), secrets.token_urlsafe(32)
+            expires = _stamp(now + timedelta(hours=SESSION_HOURS))
+            db.execute("INSERT INTO sessions VALUES(?,?,?,?,?)", (_hash(session_token), _hash(csrf), row["user_id"], expires, _stamp(now)))
+            db.execute("DELETE FROM sessions WHERE expires_at<=?", (_stamp(now),))
+            db.commit()
+        return Session(row["user_id"], row["tenant_id"], row["email"], row["display_name"], row["role"], csrf, expires), session_token
 
     def get_session(self, token: str | None) -> Session | None:
         if not token or len(token) > 256:

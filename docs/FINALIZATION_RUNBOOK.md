@@ -39,7 +39,7 @@ The core browser login and multi-user workspace isolation have been implemented.
 ## Production deployment profile
 
 - Added compose.production.yaml with Caddy as the only public ingress on 80/443.
-- Python API is not published to the host and remains on an internal-only Docker backend network with no direct internet egress. Caddy is attached to both the backend and a separate edge network.
+- Python API is not published to the host. Caddy reaches it over a private internal backend network. The API has a separate outbound identity-egress bridge for Firebase token verification; host egress policy must restrict this to required Google Auth/certificate endpoints.
 - Caddy configuration provides automatic HTTPS, HSTS and security headers.
 - App container retains non-root execution, read-only root filesystem, dropped capabilities, no-new-privileges and persistent /data volume.
 - Production environment enables multi-user auth and Secure cookies; a unique first-admin bootstrap key is required and passed only to the app container, never to Caddy. Sample secrets/config are not embedded in the image or committed as .env.production.
@@ -120,3 +120,21 @@ Open http://127.0.0.1:8765 and create the first administrator. For production, u
 ## Final disposition
 
 **Core local engineering is delivered. Public production launch remains gated by actual infrastructure, enterprise identity, independent review and operational ownership.** Keep the service local-only until those gates have been completed and signed off.
+
+
+## Addendum — Firebase Authentication integration (19 November 2026)
+
+A separate feature branch feat/firebase-auth-integration adds an optional Firebase identity provider without moving workspace data out of SQLite.
+
+- Firebase Web SDK email/password signup and login, email verification, and password-reset email are integrated into the branded sign-in screen.
+- Python Firebase Admin SDK verifies ID tokens and checks revocation before issuing CloudShield's own 12-hour HttpOnly session.
+- Firebase UID mapping is unique; roles, invitation authorization, audit, and workspace boundaries remain local.
+- Legacy password login/registration endpoints are disabled whenever Firebase provider mode is selected.
+- Existing local accounts are never auto-linked by email; explicit migration is required.
+- Production Compose mounts the Admin SDK JSON as a read-only secret; public Web SDK settings are supplied through environment variables.
+- Added Firebase identity unit/API tests, a deployment guide at docs/FIREBASE_AUTH.md, and a dated validation report at docs/FIREBASE_AUTH_REPORT.md.
+- MFA and enterprise SAML/OIDC are not enabled; these require Identity Platform features and a separate cost/security approval.
+
+**External setup blocker:** Firebase project cloudshield-ae534 has an active CloudShield Web app and a secured local Admin SDK key, but Firebase Authentication itself is not initialized. A read-only Identity Toolkit probe and a scoped configuration update both returned CONFIGURATION_NOT_FOUND. In Firebase Console, open Build → Authentication → Get started, enable Email/Password, and save. No paid plan or billing change was made. The UI explains this state rather than claiming sign-in works.
+
+This addendum supersedes the earlier report's statement that email verification and password recovery were wholly unimplemented; the application flows are now implemented but cannot be live-tested until the Firebase Console prerequisite is completed.

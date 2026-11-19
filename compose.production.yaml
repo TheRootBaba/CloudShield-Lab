@@ -12,6 +12,13 @@ services:
       CLOUDSHIELD_PORT: "8765"
       CLOUDSHIELD_CONTAINER_MODE: "1"
       CLOUDSHIELD_AUTH_MODE: "multi_user"
+      CLOUDSHIELD_AUTH_PROVIDER: ${CLOUDSHIELD_AUTH_PROVIDER:-firebase}
+      CLOUDSHIELD_FIREBASE_PROJECT_ID: ${CLOUDSHIELD_FIREBASE_PROJECT_ID:-}
+      CLOUDSHIELD_FIREBASE_API_KEY: ${CLOUDSHIELD_FIREBASE_API_KEY:-}
+      CLOUDSHIELD_FIREBASE_AUTH_DOMAIN: ${CLOUDSHIELD_FIREBASE_AUTH_DOMAIN:-}
+      CLOUDSHIELD_FIREBASE_APP_ID: ${CLOUDSHIELD_FIREBASE_APP_ID:-}
+      CLOUDSHIELD_FIREBASE_MESSAGING_SENDER_ID: ${CLOUDSHIELD_FIREBASE_MESSAGING_SENDER_ID:-}
+      CLOUDSHIELD_FIREBASE_CREDENTIALS: /run/secrets/firebase-admin.json
       CLOUDSHIELD_COOKIE_SECURE: "1"
       CLOUDSHIELD_DB: "/data/legacy.sqlite3"
       CLOUDSHIELD_AUTH_DB: "/data/auth.sqlite3"
@@ -21,6 +28,9 @@ services:
       - "8765"
     volumes:
       - cloudshield-data:/data
+    secrets:
+      - source: firebase_admin
+        target: firebase-admin.json
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m
@@ -40,6 +50,7 @@ services:
       start_period: 15s
     networks:
       - backend
+      - identity-egress
 
   caddy:
     image: caddy:2.10-alpine
@@ -77,6 +88,10 @@ services:
       - edge
       - backend
 
+secrets:
+  firebase_admin:
+    file: ${CLOUDSHIELD_FIREBASE_CREDENTIALS_FILE:?Set CLOUDSHIELD_FIREBASE_CREDENTIALS_FILE to the Firebase Admin SDK key file on the host}
+
 volumes:
   cloudshield-data:
   caddy-data:
@@ -88,3 +103,5 @@ networks:
   backend:
     driver: bridge
     internal: true
+  identity-egress:
+    driver: bridge

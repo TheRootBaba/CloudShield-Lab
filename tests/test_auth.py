@@ -244,5 +244,46 @@ class MultiUserApiTests(unittest.TestCase):
             self.assertFalse(state["bootstrap_token_required"])
 
 
+    def test_firebase_endpoint_verifies_claims_and_issues_workspace_session(self):
+        claims = {"uid":"firebase-admin-uid","email":"firebase-admin@example.test",
+                  "email_verified":True,"name":"Firebase Admin"}
+        with patch.dict(os.environ, {"CLOUDSHIELD_AUTH_PROVIDER":"firebase",
+                                     "CLOUDSHIELD_BOOTSTRAP_TOKEN":"B"*48}):
+            with patch.object(api, "_verify_firebase_id_token", return_value=claims):
+                opener, _ = self.client()
+                status, config = self.call(opener, "/api/auth/config")
+                self.assertEqual(200, status)
+                self.assertEqual("firebase", config["provider"])
+                status, result = self.call(opener, "/api/auth/firebase", "POST", {
+                    "id_token":"test-signed-token", "bootstrap_token":"B"*48,
+                    "tenant_name":"Firebase SOC"
+                })
+                self.assertEqual(200, status)
+                self.assertEqual("admin", result["user"]["role"])
+                self.assertEqual(200, self.call(opener, "/api/auth/me")[0])
+
+    def test_firebase_provider_disables_legacy_password_login_and_registration(self):
+        with patch.dict(os.environ, {"CLOUDSHIELD_AUTH_PROVIDER":"firebase"}):
+            with patch.object(api, "_verify_firebase_id_token") as verifier:
+                opener, _ = self.client()
+                status, _ = self.call(opener, "/api/auth/login", "POST", {"email":"x@example.test","password":"password"})
+                self.assertEqual(403, status)
+                status, _ = self.call(opener, "/api/auth/register", "POST", {
+                    "email":"x@example.test","display_name":"X","password":"a sufficiently long password"
+                })
+                self.assertEqual(403, status)
+                verifier.assert_not_called()
+
+    def test_firebase_endpoint_rejects_unverified_email_before_workspace_creation(self):
+        claims = {"uid":"unverified-uid","email":"pending@example.test","email_verified":False}
+        with patch.dict(os.environ, {"CLOUDSHIELD_AUTH_PROVIDER":"firebase"}):
+            with patch.object(api, "_verify_firebase_id_token", return_value=claims):
+                opener, _ = self.client()
+                status, result = self.call(opener, "/api/auth/firebase", "POST", {"id_token":"test-token"})
+                self.assertEqual(403, status)
+                self.assertIn("Verify your email", result["error"])
+                self.assertTrue(api._auth_store().bootstrap_required())
+
+
 if __name__ == "__main__":
     unittest.main()

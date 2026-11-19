@@ -36,3 +36,7 @@ npm-debug.log*
 .coverage.*
 htmlcov/
 backups/
+
+# Local-only cloud identity credentials
+secrets/*.json
+*firebase-admin*.json
