@@ -14,6 +14,8 @@ class Finding:
     actor: str
     source_ip: str
     evidence: dict[str, Any]
+    confidence: str = "MEDIUM"
+    confidence_rationale: str = "The event pattern matched a documented rule; contextual validation is still required."
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
@@ -74,7 +76,12 @@ def _public_acl(params):
         if uri.endswith("/AllUsers") or uri.endswith("/AuthenticatedUsers"): return True
     return False
 def _make(event, rule_id, title, severity, rationale, evidence):
-    return Finding(rule_id,title,severity,rationale,event.event_id,event.event_time,event.actor,event.source_ip,evidence)
+    explicit = {"CS-S3-001", "CS-S3-002", "CS-NET-001", "CS-NET-002", "CS-KMS-001", "CS-EC2-001", "CS-LAMBDA-001", "CS-RDS-001", "CS-IAM-003"}
+    confidence = "HIGH" if rule_id in explicit else "MEDIUM"
+    explanation = ("The event contains an explicit public/exposure or successful-root-login indicator; validate the resource's effective state."
+                  if confidence == "HIGH" else
+                  "The event name or provider finding matches a documented signal; authorization, impact and surrounding context require analyst review.")
+    return Finding(rule_id,title,severity,rationale,event.event_id,event.event_time,event.actor,event.source_ip,evidence,confidence,explanation)
 
 def analyze_event(event: CloudEvent) -> list[Finding]:
     findings=[]

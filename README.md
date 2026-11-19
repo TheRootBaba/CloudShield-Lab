@@ -1,4 +1,4 @@
-﻿# CloudShield Lab
+# CloudShield Lab
 
 **A local-first cloud security command center for detection, investigation and evidence-led verification.**
 
@@ -68,9 +68,13 @@ See docs/DETECTION_COVERAGE.md for rule IDs and supported patterns.
 
 ## Security and operational defaults
 
-The server binds to 127.0.0.1 and rejects non-loopback bind addresses at startup. Do not expose it to a public network. No authentication is implemented because this is a loopback-only local lab. Hosted or LAN deployment requires authentication, authorization, CSRF protection, rate limiting, audit controls and deployment hardening.
+The server binds to 127.0.0.1 and rejects non-loopback bind addresses at startup. Uploaded JSON is treated as untrusted input; the API enforces a 2 MiB JSON-object body limit, content-type/length checks, cross-origin Origin rejection, per-IP request limits and restrictive browser security headers. Mutating API operations are recorded in a local SQLite security audit table.
 
-Uploaded JSON is treated as untrusted input. The local API enforces a 2 MiB body limit and sends restrictive browser security headers. No cloud collection, resource creation, remediation or AWS writes happen unless the operator explicitly enables the one-shot collector. Terraform examples remain separate and opt-in.
+Optional API role tokens can be configured with unique `CLOUDSHIELD_ADMIN_TOKEN`, `CLOUDSHIELD_RESPONDER_TOKEN`, and `CLOUDSHIELD_ANALYST_TOKEN` values (each at least 32 characters). When any role token is configured, API requests other than `/api/health` require `Authorization: Bearer <token>`. Analysts can read and verify bundles; responders can change workflow, add notes, ingest and simulate; only admins can invoke the opt-in AWS collector. Tokens are long-lived environment secrets and must not be committed. When no tokens are configured, the app remains unauthenticated in loopback-only local mode.
+
+**Do not expose the Python listener directly to a LAN or public network.** The React UI does not yet implement a login/token lifecycle, and this project is not multi-tenant. Remote access requires a separately hardened HTTPS/VPN reverse proxy and server-side identity/token injection, plus the external controls listed in `docs/SECURITY_THREAT_MODEL.md` and `docs/RELEASE_ASSURANCE.md`. API tokens alone do not make a hosted deployment production-ready.
+
+No cloud collection, resource creation, remediation or AWS writes happen unless an operator explicitly enables the optional collector. Keep AWS collector/inventory disabled for the $0 offline setup. Terraform examples remain separate and opt-in.
 
 ## Phases 9-10: incident workflow and evidence bundles
 
@@ -112,4 +116,4 @@ MIT License.
 
 ## Offline completion and handoff
 
-See docs/OFFLINE_COMPLETION.md for the 19 November 2026 offline verification snapshot, zero-dollar AWS boundary and remaining external gates.
+See docs/OFFLINE_COMPLETION.md for the 19 November 2026 offline verification snapshot and zero-dollar AWS boundary. The Phase 15?20 offline tranche is documented in `docs/PHASES_15_20_REPORT.md`, with threat model, evidence custody, detection methodology, provider adapter design, deployment operations and release assurance in the adjacent docs.

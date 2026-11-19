@@ -19,11 +19,14 @@ from .assets import inventory, relationship_graph
 from .attack_techniques import catalog as technique_catalog
 from .workflow import ensure_schema, get_workflow, update_workflow, add_note
 from .evidence_bundle import build_bundle, verify_bundle
+from .security import SlidingWindowLimiter, authenticate, role_allowed, audit
 
 ROOT = Path(__file__).resolve().parents[2]
 WEB = ROOT / "web"
 DB_PATH = Path(os.environ.get("CLOUDSHIELD_DB", str(ROOT / "artifacts" / "evidence.sqlite3")))
 MAX_BODY = 2 * 1024 * 1024
+_READ_LIMITER = SlidingWindowLimiter(120)
+_WRITE_LIMITER = SlidingWindowLimiter(30)
 
 @contextmanager
 def _connect():
@@ -151,6 +154,42 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         if os.environ.get("CLOUDSHIELD_HTTP_LOG", "0") == "1":
             super().log_message(fmt, *args)
+    def _authorize(self, method: str, path: str) -> bool:
+        if path == "/api/health":
+            return True
+        if not path.startswith("/api/"):
+            return True
+        remote = self.client_address[0]
+        limiter = _READ_LIMITER if method == "GET" else _WRITE_LIMITER
+        if not limiter.allow(remote):
+            self.close_connection = True
+            self._send(429, {"error": "Request rate limit exceeded"})
+            return False
+        try:
+            role = authenticate(self.headers.get("Authorization"))
+        except RuntimeError as exc:
+            self.close_connection = True
+            self._send(503, {"error": str(exc)})
+            return False
+        if role is None:
+            self.close_connection = True
+            self.send_response(401)
+            self.send_header("WWW-Authenticate", "Bearer")
+            self.send_header("Content-Length", "0")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            return False
+        if not role_allowed(role, method, path):
+            self.close_connection = True
+            self._send(403, {"error": "Insufficient role"})
+            return False
+        self._cloudshield_role = role
+        return True
+
+    def _audit_mutation(self, action: str, resource: str):
+        role = getattr(self, "_cloudshield_role", "local")
+        audit(DB_PATH, role, action, resource, self.client_address[0])
+
     def _send(self, status: int, payload: Any, content_type="application/json; charset=utf-8"):
         body = payload if isinstance(payload, bytes) else (json.dumps(payload, ensure_ascii=False, default=str).encode() if content_type.startswith("application/json") else str(payload).encode())
         self.send_response(status)
@@ -158,6 +197,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
         self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
         self.end_headers()
@@ -169,15 +210,27 @@ class Handler(BaseHTTPRequestHandler):
         origin = self.headers.get("Origin")
         if origin and origin != "http://" + self.headers.get("Host", ""):
             raise PermissionError("Cross-origin requests are not allowed")
-        length = int(self.headers.get("Content-Length", "0"))
+        if self.headers.get("Transfer-Encoding"):
+            raise ValueError("Transfer-Encoding is not supported")
+        raw_length = self.headers.get("Content-Length", "0")
+        if not raw_length.isdigit():
+            raise ValueError("Invalid Content-Length")
+        length = int(raw_length)
         if length < 0 or length > MAX_BODY:
             raise ValueError("Request body exceeds 2 MiB limit")
         raw = self.rfile.read(length)
-        return json.loads(raw) if raw else {}
+        try:
+            value = json.loads(raw) if raw else {}
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("Request body must contain valid UTF-8 JSON") from exc
+        if not isinstance(value, dict):
+            raise ValueError("Request body must be a JSON object")
+        return value
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
         try:
+            if not self._authorize("GET", path): return
             if path == "/api/health":
                 return self._send(200, {"ok": True, "service": "cloudshield-local-api", "database": str(DB_PATH), "aws_collector_enabled": os.environ.get("CLOUDSHIELD_ENABLE_AWS_COLLECTOR") == "1"})
             if path == "/api/analytics":
@@ -262,11 +315,18 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(500, {"error": str(exc)})
     def do_PATCH(self):
         try:
+            if not self._authorize("PATCH", urlparse(self.path).path): return
             body=self._body()
             if self.path.startswith("/api/incidents/") and self.path.endswith("/workflow"):
                 incident_id=self.path[len("/api/incidents/"):-len("/workflow")]
-                return self._send(200,update_workflow(DB_PATH,incident_id,body.get("changes",body),body.get("actor","analyst")))
+                role=getattr(self,"_cloudshield_role","local")
+                actor=body.get("actor","analyst") if role == "local" else role
+                result=update_workflow(DB_PATH,incident_id,body.get("changes",body),actor)
+                self._audit_mutation("workflow.update", incident_id)
+                return self._send(200,result)
             return self._send(404,{"error":"Not found"})
+        except PermissionError as exc:
+            return self._send(403,{"error":str(exc)})
         except KeyError as exc:
             return self._send(404,{"error":str(exc).strip("'")})
         except ValueError as exc:
@@ -275,15 +335,20 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(500,{"error":f"{type(exc).__name__}: {exc}"})
     def do_POST(self):
         try:
+            if not self._authorize("POST", urlparse(self.path).path): return
             body = self._body()
             if self.path == "/api/evidence/verify":
                 return self._send(200,verify_bundle(body))
             if self.path.startswith("/api/incidents/") and self.path.endswith("/notes"):
                 incident_id=self.path[len("/api/incidents/"):-len("/notes")]
-                result=add_note(DB_PATH,incident_id,body.get("note"),body.get("actor","analyst"))
+                role=getattr(self,"_cloudshield_role","local")
+                actor=body.get("actor","analyst") if role == "local" else role
+                result=add_note(DB_PATH,incident_id,body.get("note"),actor)
+                self._audit_mutation("incident.note", incident_id)
                 return self._send(200,result)
             if self.path == "/api/ingest":
                 result = EvidenceStore(DB_PATH).ingest(body)
+                self._audit_mutation("evidence.ingest", "user-upload")
                 return self._send(200, {"ok": True, "source": "user-upload", **result})
             if self.path == "/api/simulate":
                 scenario = body.get("scenario", "all")
@@ -294,6 +359,7 @@ class Handler(BaseHTTPRequestHandler):
                     counts = EvidenceStore(DB_PATH).ingest(item["events"])
                     for key, value in counts.items():
                         total[key] += value
+                self._audit_mutation("simulation.run", str(scenario))
                 return self._send(200, {"ok": True, "execution": "offline-synthetic", "cloud_api_calls": 0, "scenarios": [s["scenario"] for s in scenarios], **total})
             if self.path == "/api/collector/aws":
                 if os.environ.get("CLOUDSHIELD_ENABLE_AWS_COLLECTOR") != "1":
@@ -304,6 +370,7 @@ class Handler(BaseHTTPRequestHandler):
                 from .collector import collect_cloudtrail
                 result = collect_cloudtrail(region, int(body.get("lookback_minutes", 60)), int(body.get("max_pages", 5)))
                 counts = EvidenceStore(DB_PATH).ingest(result["events"]) if result["events"] else {"events_inserted": 0, "findings_inserted": 0, "incidents_inserted": 0}
+                self._audit_mutation("aws.collect", region)
                 return self._send(200, {"ok": True, **{k:v for k,v in result.items() if k != "events"}, "events_returned": len(result["events"]), **counts})
             return self._send(404, {"error": "Not found"})
         except PermissionError as exc:
@@ -316,7 +383,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(500, {"error": f"{type(exc).__name__}: {exc}"})
 
 def validate_bind_host(host: str) -> None:
-    """Prevent accidental LAN/public exposure before auth and tenant isolation exist."""
+    """Keep the application bound to loopback; place an authenticated TLS proxy in front for remote access."""
     try:
         is_loopback = ipaddress.ip_address(host).is_loopback
     except ValueError:
@@ -324,7 +391,7 @@ def validate_bind_host(host: str) -> None:
     if not is_loopback:
         raise RuntimeError(
             "CloudShield is a single-user local lab and may bind only to a loopback IP. "
-            "Do not expose it to a LAN or public network; authentication and tenant isolation are not implemented."
+            "Bind only to loopback. For remote use, use a separately hardened HTTPS reverse proxy and configured role tokens; this app is single-tenant."
         )
 
 

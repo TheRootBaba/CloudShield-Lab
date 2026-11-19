@@ -50,6 +50,9 @@ class EvidenceBundleTests(unittest.TestCase):
   bundle=build_bundle(self.db,self.incident_id)
   self.assertEqual(4,len(bundle["events"]))
   self.assertEqual(4,len(bundle["findings"]))
+  self.assertEqual("1.1",bundle["bundle_version"])
+  self.assertEqual(4,bundle["collection_metadata"]["event_count"])
+  self.assertTrue(bundle["collection_metadata"]["source_formats"])
   self.assertTrue(verify_bundle(bundle)["valid"])
  def test_tampering_is_detected(self):
   bundle=build_bundle(self.db,self.incident_id)
@@ -68,6 +71,15 @@ class EvidenceBundleTests(unittest.TestCase):
  def test_malformed_bundle(self):
   self.assertFalse(verify_bundle({})["valid"])
   bundle=build_bundle(self.db,self.incident_id);bundle["events"]="not-an-array"
+  self.assertFalse(verify_bundle(bundle)["valid"])
+ def test_unknown_version_and_missing_provenance_are_rejected(self):
+  bundle=build_bundle(self.db,self.incident_id);bundle["bundle_version"]="99.0"
+  self.assertFalse(verify_bundle(bundle)["valid"])
+  bundle=build_bundle(self.db,self.incident_id);bundle.pop("collection_metadata")
+  self.assertFalse(verify_bundle(bundle)["valid"])
+  bundle=build_bundle(self.db,self.incident_id);bundle["events"]=None
+  self.assertFalse(verify_bundle(bundle)["valid"])
+  bundle=build_bundle(self.db,self.incident_id);bundle["generated_at"]="not-a-timestamp"
   self.assertFalse(verify_bundle(bundle)["valid"])
  def test_duplicate_event_records_detected(self):
   bundle=build_bundle(self.db,self.incident_id);bundle["events"].append(bundle["events"][0])
