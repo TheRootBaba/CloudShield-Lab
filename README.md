@@ -121,7 +121,7 @@ MIT License.
 
 ## Offline completion and handoff
 
-See docs/OFFLINE_COMPLETION.md for the offline verification snapshot. The Phase 15?20 delivery and provider expansion are documented in `docs/PHASES_15_20_REPORT.md` and `docs/PROVIDER_EXPANSION_REPORT.md`. See `docs/AZURE_PROVIDER.md`, `docs/TRUSTED_TIMESTAMPING.md`, and `docs/RELEASE_ASSURANCE.md` for current capabilities and remaining external gates.
+See docs/OFFLINE_COMPLETION.md for the offline verification snapshot. The Phase 15–20 delivery and provider expansion are documented in `docs/PHASES_15_20_REPORT.md` and `docs/PROVIDER_EXPANSION_REPORT.md`. See `docs/AZURE_PROVIDER.md`, `docs/TRUSTED_TIMESTAMPING.md`, and `docs/RELEASE_ASSURANCE.md` for current capabilities and remaining external gates. The step-by-step AWS/Azure validation, backup/restore exercise, detection evaluation, security review and final sign-off procedures are in [`docs/FINALIZATION_RUNBOOK.md`](docs/FINALIZATION_RUNBOOK.md).
 
 ## Containerized local run
 
