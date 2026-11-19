@@ -1,4 +1,4 @@
-# CloudShield Lab
+﻿# CloudShield Lab
 
 **A local-first cloud security command center for detection, investigation and evidence-led verification.**
 
@@ -49,7 +49,7 @@ Live collection is off by default and is a one-shot, read-only lookup. It uses t
 1. Install the optional dependency: **python -m pip install -e ".[aws]"**.
 2. Configure a local AWS profile or environment credentials with only cloudtrail:LookupEvents.
 3. Explicitly enable the feature in the server process: **$env:CLOUDSHIELD_ENABLE_AWS_COLLECTOR="1"**
-4. Start the app again and open **Data sources → AWS CloudTrail**. Choose a region and lookback up to 24 hours.
+4. Start the app again and open **Data sources â†’ AWS CloudTrail**. Choose a region and lookback up to 24 hours.
 
 The collector reads up to five pages of 50 events (250 maximum per run), does not poll continuously, and makes no AWS write calls. AWS API usage and related services may incur charges under your account. Do not use root credentials. No AWS resources are created by the local API.
 
@@ -64,7 +64,7 @@ See docs/DETECTION_COVERAGE.md for rule IDs and supported patterns.
 - SHA-256 fingerprints detect content changes relative to a known digest; they are not digital signatures, trusted timestamps, or proof of source authenticity.
 - Analyst workflow per incident: status transitions, priority, assignee, and append-only activity notes.
 - Portable incident evidence bundles containing incident/event/finding digests, workflow history and a bundle manifest; verifier checks hash integrity and timeline references.
-- The SQLite store is single-user and local, not a multi-tenant production database. Workflow actor names are user-supplied and are not authenticated. Evidence bundle hashes are tamper-evident only relative to a trusted copy of the manifest; bundles are not digitally signed.
+- The SQLite store is single-user and local, not a multi-tenant production database. Workflow actor names are user-supplied and are not authenticated. Evidence bundle hashes are tamper-evident only relative to a trusted copy of the manifest. Phase 12 adds optional detached Ed25519 signatures when a trusted public key is supplied independently; signatures do not establish source truth or trusted time.
 
 ## Security and operational defaults
 
@@ -72,7 +72,7 @@ The server binds to 127.0.0.1 and rejects non-loopback bind addresses at startup
 
 Uploaded JSON is treated as untrusted input. The local API enforces a 2 MiB body limit and sends restrictive browser security headers. No cloud collection, resource creation, remediation or AWS writes happen unless the operator explicitly enables the one-shot collector. Terraform examples remain separate and opt-in.
 
-## Phases 9–10: incident workflow and evidence bundles
+## Phases 9-10: incident workflow and evidence bundles
 
 - Use the incident drawer to set workflow status (`new`, `acknowledged`, `in_progress`, `resolved`, `reopened`), priority, assignee and add analyst notes.
 - Workflow changes and notes are retained in a local activity history.
@@ -80,7 +80,9 @@ Uploaded JSON is treated as untrusted input. The local API enforces a 2 MiB body
 - API: `GET /api/incidents/{id}/workflow`, `PATCH /api/incidents/{id}/workflow`, `POST /api/incidents/{id}/notes`, `GET /api/incidents/{id}/export`, and `POST /api/evidence/verify`.
 - Integrity checks validate incident/event/finding digests, manifest digest and event references. This is not cryptographic authenticity or trusted chain of custody.
 
-See docs/PHASE_9_INCIDENT_RESPONSE.md and docs/PHASE_10_EVIDENCE_BUNDLES.md for implementation details and boundaries.\n\n## Detection evaluation (Phase 11)
+See docs/PHASE_9_INCIDENT_RESPONSE.md and docs/PHASE_10_EVIDENCE_BUNDLES.md for implementation details and boundaries.
+
+## Detection evaluation (Phase 11)
 
 Run **cloudshield evaluate fixtures/detection_evaluation.json** to calculate per-rule and micro-averaged precision, recall, specificity and F1. The included 26-case labelled corpus currently passes 26/26 cases. These are deterministic fixture results only, not estimates of production false-positive or false-negative rates. See docs/PHASE_11_DETECTION_EVALUATION.md.
 
@@ -90,7 +92,7 @@ Install the optional signing dependency with **python -m pip install -e ".[signi
 
 ## Optional read-only AWS inventory (Phase 13)
 
-Install boto3 with **python -m pip install -e ".[aws]"**, then explicitly set **$env:CLOUDSHIELD_ENABLE_AWS_INVENTORY="1"** before running **cloudshield aws-inventory --regions us-east-1 --max-pages 1 --output artifacts/aws-inventory.json**. The command is disabled by default, accepts only 1–5 explicit regions, and caps pagination. It lists selected resource metadata only; it is not complete organization-wide discovery. Tests use mocked clients and do not contact AWS. Review docs/PHASE_13_AWS_INVENTORY.md and approve the sandbox/cost boundary before a live run.
+Install boto3 with **python -m pip install -e ".[aws]"**, then explicitly set **$env:CLOUDSHIELD_ENABLE_AWS_INVENTORY="1"** before running **cloudshield aws-inventory --regions us-east-1 --max-pages 1 --output artifacts/aws-inventory.json**. The command is disabled by default, accepts only 1â€“5 explicit regions, and caps pagination. It lists selected resource metadata only; it is not complete organization-wide discovery. Tests use mocked clients and do not contact AWS. Review docs/PHASE_13_AWS_INVENTORY.md and approve the sandbox/cost boundary before a live run.
 
 ## Phase 14 offline hardening
 
@@ -107,3 +109,7 @@ Run **python -m compileall -q src tests** and **python -m unittest discover -s t
 The suite covers normalization, selected detections, simulation, detection evaluation, signed evidence, mocked AWS inventory, incident grouping, graph semantics, API integration, SQLite persistence and Terraform safety fixtures.
 
 MIT License.
+
+## Offline completion and handoff
+
+See docs/OFFLINE_COMPLETION.md for the 19 November 2026 offline verification snapshot, zero-dollar AWS boundary and remaining external gates.

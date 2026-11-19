@@ -1,34 +1,34 @@
-# CloudShield Lab — delivery report
+﻿# CloudShield Lab â€” delivery report
 
-**Report date:** 18 November 2026
+**Report date:** 19 November 2026
 **Repository:** TheRootBaba/CloudShield-Lab
 **Baseline:** main at merge commit `386e60bee116ed357b6144408b405339c4634e15`
 
 ## Executive summary
 
-Phases 11–13 have been implemented on top of the merged Phase 1–10 baseline. The project now includes a deterministic detection evaluation harness, optional detached Ed25519 evidence signatures, a bounded opt-in read-only AWS inventory command, and lazy-loaded analytics charts. Local automated tests and browser checks pass.
+Phases 11â€“13 have been implemented on top of the merged Phase 1â€“10 baseline. The project now includes a deterministic detection evaluation harness, optional detached Ed25519 evidence signatures, a bounded opt-in read-only AWS inventory command, and lazy-loaded analytics charts. Local automated tests and browser checks pass.
 
 This is not a production cloud security platform. Real AWS validation, production detection accuracy measurement, full organization-wide inventory, hosted authentication/authorization and independent trusted timestamping remain explicit external gates.
 
 ## Delivered in this tranche
 
-### Phase 11 — detection evaluation
+### Phase 11 â€” detection evaluation
 - Added 26 hand-labelled positive and negative event-shape fixtures covering all 13 catalogued rules.
 - Added per-rule and micro-averaged TP/FP/FN/TN, precision, recall, specificity and F1.
 - Added CLI command: `cloudshield evaluate fixtures/detection_evaluation.json`.
 - Current fixture result: 26/26 cases pass; micro precision, recall, specificity and F1 are each 1.0000.
 - Interpretation: fixture-only regression result. It is not a measured production detection rate.
 
-### Phase 12 — signed evidence
+### Phase 12 â€” signed evidence
 - Added password-encrypted Ed25519 private-key generation and PEM public-key export.
 - Added detached signature sidecars for valid Phase 10 evidence bundles.
 - Verification requires a separately supplied public key and checks its fingerprint, bundle digest and signature.
 - Invalid/tampered bundles, wrong keys and overwriting an existing signature sidecar are rejected.
 - The signing dependency is optional: `python -m pip install -e ".[signing]"`.
 
-### Phase 13 — bounded AWS inventory
+### Phase 13 â€” bounded AWS inventory
 - Added explicit opt-in CLI inventory for EC2 instances, security groups, S3 bucket names, IAM roles and IAM users.
-- Requires `CLOUDSHIELD_ENABLE_AWS_INVENTORY=1`, 1–5 explicit regions and a maximum of two pages per operation.
+- Requires `CLOUDSHIELD_ENABLE_AWS_INVENTORY=1`, 1â€“5 explicit regions and a maximum of two pages per operation.
 - Uses only `DescribeInstances`, `DescribeSecurityGroups`, `ListAllMyBuckets`, `ListRoles` and `ListUsers`.
 - Includes API-call count, truncation status and required IAM actions in the output.
 - Unit tests use fake clients. No AWS credentials were used and no AWS API requests were made.
@@ -43,7 +43,7 @@ This is not a production cloud security platform. Real AWS validation, productio
 | Check | Result |
 |---|---|
 | Python compilation | Passed |
-| Python unit/integration suite | 68 tests passed |
+| Python unit/integration suite | 73 tests passed |
 | Detection evaluation | 26/26 cases passed |
 | Ed25519 signing tests | Passed, including tamper and wrong-key rejection |
 | AWS inventory tests | Passed with mocked clients only |
@@ -87,3 +87,8 @@ python -m pip install -e ".[aws]"
 $env:CLOUDSHIELD_ENABLE_AWS_INVENTORY="1"
 cloudshield aws-inventory --regions us-east-1 --max-pages 1 --output artifacts/aws-inventory.json
 ```
+
+
+## Offline handoff update — 19 November 2026
+
+AWS validation has been explicitly deferred. No AWS credentials or API calls were used and no cloud resources were changed. A fresh local verification passed: 73 Python tests, Python compilation, 26/26 curated fixture cases, Vite production build, Terraform formatting, both Terraform root validations, and git diff check. See OFFLINE_COMPLETION.md for scope and remaining gates.
