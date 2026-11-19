@@ -43,7 +43,7 @@ The application-side Firebase Authentication integration, local production profi
 | Container posture | Non-root 10001:10001, read-only root filesystem, all Linux capabilities dropped, no host API port binding |
 | Local ingress | Caddy loopback-only host ports 8088 and 8443 |
 | Firebase Auth live sign-in | Blocked: Authentication config not initialized |
-| Python pip-audit | No result; local audit process did not complete. Do not treat the Python dependency set as freshly vulnerability-cleared until CI or a successful audit finishes. |
+| Python pip-audit | No local result; the audit process did not complete. CI now installs the Firebase extra and audits both installed project dependencies and requirements-cloud.lock. Treat Python dependencies as pending until that CI audit completes. |
 
 ## Firebase project and key status
 
@@ -68,5 +68,10 @@ The application-side Firebase Authentication integration, local production profi
 ## Current local state
 
 The local Docker stack remains running and healthy. Caddy is exposed only on 127.0.0.1:8088 and 127.0.0.1:8443. The Python API is not published to the host. The local auth database is empty and reports bootstrap_required=true; do not create the first admin until Firebase Authentication has been initialized and Email/Password enabled.
+
+## Source control
+
+- Branch: feat/firebase-auth-integration
+- Pull request: https://github.com/TheRootBaba/CloudShield-Lab/pull/12 (draft; awaiting CI and review)
 
 No Firebase billing changes, Supabase changes, unrelated Docker service changes, or public deployments were made.
