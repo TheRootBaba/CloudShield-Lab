@@ -8,7 +8,7 @@
 - [x] Deterministic detection evaluation methodology, confidence rationale and fixture regression tests.
 - [x] Automated SQLite online backup, manifest verification and non-overwriting restore commands, plus health/rollback runbooks.
 - [x] Local-only container profile authored with non-root user, read-only root filesystem, dropped capabilities and loopback host port; Compose YAML parsed.
-- [ ] Docker image build in CI (job configured; result pending).
+- [x] GitHub Actions run #33 built the local container image without pushing and validated Compose configuration.
 - [x] AWS access disabled for this milestone; no live cloud calls or resources.
 - [ ] Independent security review / penetration test.
 - [ ] Actual backup restore exercise on a separately managed backup copy.

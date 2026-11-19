@@ -60,7 +60,7 @@ Development machine: Windows, Python 3.14; project and optional AWS/Azure/signin
 | Terraform vulnerable training root validate | Passed |
 | Compose YAML | Parsed; host port assertion confirms `127.0.0.1:8765:8765` |
 | `git diff --check` | Passed |
-| Docker image build | Not run locally: Docker CLI exists but Docker Desktop Linux engine/daemon is unavailable. A no-push Docker build job was added to GitHub Actions; its result is pending CI. |
+| Docker image build | Local Docker daemon unavailable; GitHub Actions run #33 built the image successfully and validated Compose configuration (no image push). |
 
 Azure SDK modules and both management clients were imported/constructed locally without making network requests. Provider behavior tests use injected fake clients. All AWS tests use fake clients. No AWS identity or Azure account validation was performed.
 
