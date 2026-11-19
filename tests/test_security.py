@@ -1,4 +1,4 @@
-﻿import os
+import os
 import unittest
 from unittest.mock import patch
 from cloudshield.security import SlidingWindowLimiter, authenticate, role_allowed

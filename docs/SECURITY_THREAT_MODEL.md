@@ -1,4 +1,4 @@
-﻿# Application security threat model
+# Application security threat model
 
 **Status:** implemented controls for a single-tenant local API; not a certification or independent assessment.
 
@@ -42,3 +42,12 @@ On suspected token compromise, stop the service, rotate the affected environment
 ## Explicit non-goals
 
 No multi-tenancy, SSO, MFA, password reset, session cookies, CSRF cookie tokens, distributed rate limiting, immutable audit sink, external KMS, trusted timestamp authority, penetration test or independent security sign-off is claimed.
+
+
+## Cloud provider credential boundary
+
+AWS uses the standard boto3 credential chain; Azure uses `DefaultAzureCredential`. CloudShield does not accept or persist provider client secrets. Collector execution is disabled unless its provider-specific environment flag is set, API collector routes require the admin role when role tokens are configured, and all adapter calls are read-only and bounded. Host environment variables, local CLI sessions, managed identities and cloud SDK credential caches remain trusted computing-base inputs. Never run with Owner/Administrator/Contributor permissions. Revoke temporary credentials after validation and protect exported telemetry as potentially sensitive.
+
+## Container boundary
+
+The supplied Compose profile runs as non-root with a read-only root filesystem, dropped capabilities, no-new-privileges and a persistent data volume. The host port is explicitly bound to loopback. The application still has no browser login, MFA/SSO or tenant isolation; local containerization does not authorize network exposure.

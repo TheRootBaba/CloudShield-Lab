@@ -1,4 +1,4 @@
-﻿# Deployment and operations design (offline scope)
+# Deployment and operations design (offline scope)
 
 ## Supported operating mode
 
@@ -12,6 +12,8 @@ The supported mode remains a single-user process bound to `127.0.0.1:8765`, with
 - `CLOUDSHIELD_ADMIN_TOKEN`, `CLOUDSHIELD_RESPONDER_TOKEN`, `CLOUDSHIELD_ANALYST_TOKEN`: optional unique random secrets, at least 32 characters. If configured, every API route except health requires a bearer token.
 - `CLOUDSHIELD_ENABLE_AWS_COLLECTOR`: must remain unset/disabled in the offline zero-cost milestone.
 - `CLOUDSHIELD_ENABLE_AWS_INVENTORY`: must remain unset/disabled in the offline zero-cost milestone.
+- `AZURE_SUBSCRIPTION_ID`: one explicit Azure subscription scope; no secret.
+- `CLOUDSHIELD_ENABLE_AZURE_COLLECTION`: must remain unset/disabled until Azure read-only validation is separately approved.
 
 Use an OS secret manager or protected service environment file; do not store tokens in Git, shell history, screenshots or logs. Restart the process after rotation.
 
@@ -27,6 +29,18 @@ python -m cloudshield.api
 ```
 
 The Vite build outputs static files under `web/`. The Python process serves the UI and API together. Keep the database on a persistent local volume with restrictive permissions. Do not put the database in a synced/shared directory.
+
+## Automated SQLite backup and recovery
+
+Use the online SQLite backup command so committed WAL data is included consistently:
+
+```powershell
+cloudshield backup --database artifacts/evidence.sqlite3 --output artifacts/backups/evidence.sqlite3
+cloudshield verify-backup artifacts/backups/evidence.sqlite3
+cloudshield restore-backup artifacts/backups/evidence.sqlite3 --destination artifacts/restore/evidence.sqlite3
+```
+
+The backup command refuses overwrite, performs `PRAGMA integrity_check`, writes a SHA-256 sidecar manifest and restricts local file permissions where supported. Verification checks file name, size, digest and SQLite integrity. Restore refuses an existing destination and verifies before copying. Keep the manifest in a separate trusted location or sign it; an unsigned sidecar stored next to a backup does not protect against an attacker who can alter both.
 
 ## Backup and recovery runbook
 
@@ -47,3 +61,7 @@ Build from a clean reviewed commit, install from lockfiles, run tests/scans, ret
 ## Hosting boundary
 
 A public deployment is not delivered. It requires a managed TLS ingress, identity-aware frontend/token lifecycle, multi-user/tenant authorization, external secret storage, central audit retention, monitoring/alerting, tested backup automation, incident response ownership and a separately approved hosting budget. Container orchestration is deferred because the current single-tenant UI has no browser login/token lifecycle and the API intentionally binds to loopback.
+
+## Containerized local deployment
+
+`Dockerfile` and `compose.yaml` provide a local-only container profile. It uses a non-root user, read-only root filesystem, a writable persistent `/data` volume, no added Linux capabilities, `no-new-privileges`, and a host port binding fixed to `127.0.0.1:8765`. The container-only wildcard bind is gated by `CLOUDSHIELD_CONTAINER_MODE=1`; do not reuse that setting in a public or manually exposed container. Build and run with `docker compose up --build -d`; inspect with `docker compose logs`; stop with `docker compose down` (the named volume persists). The container profile is not a hosted/multi-tenant production deployment.

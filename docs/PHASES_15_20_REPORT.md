@@ -84,3 +84,8 @@ The GitHub Actions workflow upgrades pip and includes a Python `pip-audit --skip
 - `docs/DEPLOYMENT_OPERATIONS.md`
 - `docs/RELEASE_ASSURANCE.md`
 - `docs/PHASES_15_20_REPORT.md`
+
+
+## Follow-up extension: dual-provider and local operations work
+
+A follow-up extension adds Azure as a second provider, AWS pagination/partial-failure resilience, Azure detection regression cases, automated SQLite backup/restore commands, local-only container packaging and a trusted timestamp/WORM design. See `docs/PROVIDER_EXPANSION_REPORT.md` for exact current test results. These additions do not remove the external hosted-production or live-cloud validation gates listed above.

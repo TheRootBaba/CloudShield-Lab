@@ -33,6 +33,8 @@ RULE_CATALOG = [
  {"id":"CS-LAMBDA-001","title":"Lambda function permission granted to public principal","severity":"HIGH","service":"Lambda","events":["AddPermission"],"description":"A Lambda resource policy may allow invocation by any principal."},
  {"id":"CS-RDS-001","title":"RDS snapshot shared publicly","severity":"CRITICAL","service":"RDS","events":["ModifyDBSnapshotAttribute"],"description":"A database snapshot may have been shared with all AWS accounts."},
  {"id":"CS-SH-001","title":"AWS Security Hub finding imported","severity":"Provider","service":"Security Hub","events":["SecurityHubFinding"],"description":"Provider finding normalized into CloudShield."},
+ {"id":"CS-AZ-IAM-001","title":"Azure role assignment changed","severity":"HIGH","service":"Azure RBAC","events":["Microsoft.Authorization/roleAssignments/write"],"description":"An Azure role assignment was created or updated; validate principal, role definition and scope."},
+ {"id":"CS-AZ-AUDIT-001","title":"Azure Activity Log diagnostic settings deleted","severity":"HIGH","service":"Azure Monitor","events":["Microsoft.Insights/diagnosticSettings/delete"],"description":"A diagnostic setting was deleted; validate whether audit export coverage was weakened."},
 ]
 IAM_MUTATION_EVENTS = set(RULE_CATALOG[0]["events"])
 def _as_list(value):
@@ -86,6 +88,16 @@ def _make(event, rule_id, title, severity, rationale, evidence):
 def analyze_event(event: CloudEvent) -> list[Finding]:
     findings=[]
     source,name,params=event.event_source,event.event_name,event.request_parameters or {}
+    if source == "azure.activitylogs":
+        operation = name.lower()
+        if operation.endswith("microsoft.authorization/roleassignments/write") or operation.endswith("/roleassignments/write"):
+            findings.append(_make(event,"CS-AZ-IAM-001","Azure role assignment changed","HIGH",
+                "An Azure RBAC role assignment was created or updated. Confirm the principal, role definition, scope, approval and resulting effective permissions.",
+                {"operation":name,"resource_ids":list(event.resource_ids),"authorization":params.get("authorization",{}),"status":params.get("status")}))
+        if operation.endswith("microsoft.insights/diagnosticsettings/delete") or operation.endswith("/diagnosticsettings/delete"):
+            findings.append(_make(event,"CS-AZ-AUDIT-001","Azure Activity Log diagnostic settings deleted","HIGH",
+                "A diagnostic setting was deleted. Verify whether subscription activity logs or resource logs have lost their export destination and restore approved coverage.",
+                {"operation":name,"resource_ids":list(event.resource_ids),"status":params.get("status")}))
     if source == "securityhub.amazonaws.com" and name == "SecurityHubFinding":
         label=str(params.get("severity","UNKNOWN")).upper()
         mapped={"CRITICAL":"CRITICAL","HIGH":"HIGH","MEDIUM":"MEDIUM","LOW":"LOW","INFORMATIONAL":"INFO","INFO":"INFO"}.get(label)

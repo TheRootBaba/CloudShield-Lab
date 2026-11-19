@@ -1,4 +1,4 @@
-﻿"""Small, dependency-free API security primitives for the single-process local service."""
+"""Small, dependency-free API security primitives for the single-process local service."""
 from __future__ import annotations
 
 import hmac
@@ -63,7 +63,7 @@ def role_allowed(role: str, method: str, path: str) -> bool:
         return True
     if method == "POST" and path == "/api/evidence/verify":
         return True
-    if path == "/api/collector/aws":
+    if path in {"/api/collector/aws", "/api/collector/azure/activity-logs", "/api/collector/azure/inventory"}:
         return role == "admin"
     return role in {"admin", "responder"}
 

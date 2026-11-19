@@ -1,0 +1,13 @@
+﻿.git
+.github
+node_modules
+.verify-venv
+.audit-venv
+__pycache__
+*.py[cod]
+artifacts
+*.sqlite3
+*.db
+.env
+.venv
+venv

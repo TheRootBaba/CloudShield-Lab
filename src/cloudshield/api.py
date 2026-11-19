@@ -49,8 +49,13 @@ def _rows(table: str, limit: int = 200):
     _ensure_store()
     if table not in {"events", "findings", "incidents"}:
         raise ValueError("Invalid table")
+    queries = {
+        "events": "SELECT payload_json,payload_sha256 FROM events ORDER BY rowid DESC LIMIT ?",
+        "findings": "SELECT payload_json,payload_sha256 FROM findings ORDER BY rowid DESC LIMIT ?",
+        "incidents": "SELECT payload_json,payload_sha256 FROM incidents ORDER BY rowid DESC LIMIT ?",
+    }
     with _connect() as db:
-        records = db.execute(f"SELECT payload_json,payload_sha256 FROM {table} ORDER BY rowid DESC LIMIT ?", (limit,)).fetchall()
+        records = db.execute(queries[table], (limit,)).fetchall()
     return [{"data": json.loads(body), "sha256": digest} for body, digest in records]
 
 def _dashboard():
@@ -154,6 +159,15 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         if os.environ.get("CLOUDSHIELD_HTTP_LOG", "0") == "1":
             super().log_message(fmt, *args)
+    def _drain_rejected_body(self):
+        """Consume a bounded rejected request body before closing, avoiding TCP reset on unread bytes."""
+        raw_length = self.headers.get("Content-Length", "0")
+        if raw_length.isdigit() and 0 <= int(raw_length) <= MAX_BODY:
+            if int(raw_length):
+                self.rfile.read(int(raw_length))
+        else:
+            self.close_connection = True
+
     def _authorize(self, method: str, path: str) -> bool:
         if path == "/api/health":
             return True
@@ -172,6 +186,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(503, {"error": str(exc)})
             return False
         if role is None:
+            if method in {"POST", "PATCH", "PUT"}:
+                self._drain_rejected_body()
             self.close_connection = True
             self.send_response(401)
             self.send_header("WWW-Authenticate", "Bearer")
@@ -180,6 +196,8 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return False
         if not role_allowed(role, method, path):
+            if method in {"POST", "PATCH", "PUT"}:
+                self._drain_rejected_body()
             self.close_connection = True
             self._send(403, {"error": "Insufficient role"})
             return False
@@ -288,14 +306,25 @@ class Handler(BaseHTTPRequestHandler):
                 findings = [json.loads(r[0]) for r in finding_rows]
                 assets = inventory(events, findings)
                 return self._send(200, relationship_graph(events, assets))
-            if path == "/api/collector/status":
+            if path in {"/api/collector/status", "/api/providers"}:
                 try:
                     import boto3
-                    sdk = True
-                    credentials = bool(boto3.Session().get_credentials())
+                    aws_sdk = True
+                    aws_credentials = bool(boto3.Session().get_credentials())
                 except ImportError:
-                    sdk, credentials = False, False
-                return self._send(200, {"enabled": os.environ.get("CLOUDSHIELD_ENABLE_AWS_COLLECTOR") == "1", "sdk_installed": sdk, "credentials_detected": credentials, "mode": "read-only CloudTrail LookupEvents; one-shot, user initiated"})
+                    aws_sdk, aws_credentials = False, False
+                try:
+                    import importlib.util
+                    azure_sdk = all(importlib.util.find_spec(name) is not None for name in ("azure.identity", "azure.mgmt.resource", "azure.mgmt.monitor"))
+                except (ImportError, ModuleNotFoundError, ValueError):
+                    azure_sdk = False
+                return self._send(200, {
+                    "providers": [
+                        {"id":"aws", "name":"Amazon Web Services", "sdk_installed":aws_sdk, "credentials_detected":aws_credentials, "enabled":os.environ.get("CLOUDSHIELD_ENABLE_AWS_COLLECTOR") == "1" or os.environ.get("CLOUDSHIELD_ENABLE_AWS_INVENTORY") == "1", "capabilities":["CloudTrail management event lookup", "bounded EC2/security-group/S3-name/IAM metadata inventory"]},
+                        {"id":"azure", "name":"Microsoft Azure", "sdk_installed":azure_sdk, "environment_credentials_configured":bool(os.environ.get("AZURE_CLIENT_ID") and os.environ.get("AZURE_TENANT_ID") and os.environ.get("AZURE_CLIENT_SECRET")), "subscription_configured":bool(os.environ.get("AZURE_SUBSCRIPTION_ID")), "credential_chain":"DefaultAzureCredential (environment, workload/managed identity, developer tools)", "enabled":os.environ.get("CLOUDSHIELD_ENABLE_AZURE_COLLECTION") == "1", "capabilities":["Azure Activity Log control-plane events", "bounded Azure Resource Manager metadata inventory"]}
+                    ],
+                    "mode":"explicitly enabled, bounded, read-only, user-initiated collection"
+                })
             if path == "/" or path.startswith("/"):
                 safe = "index.html" if path == "/" else path.lstrip("/")
                 target = (WEB / safe).resolve()
@@ -372,6 +401,21 @@ class Handler(BaseHTTPRequestHandler):
                 counts = EvidenceStore(DB_PATH).ingest(result["events"]) if result["events"] else {"events_inserted": 0, "findings_inserted": 0, "incidents_inserted": 0}
                 self._audit_mutation("aws.collect", region)
                 return self._send(200, {"ok": True, **{k:v for k,v in result.items() if k != "events"}, "events_returned": len(result["events"]), **counts})
+            if self.path in {"/api/collector/azure/activity-logs", "/api/collector/azure/inventory"}:
+                if os.environ.get("CLOUDSHIELD_ENABLE_AZURE_COLLECTION") != "1":
+                    return self._send(403, {"error": "Azure collection disabled. Set CLOUDSHIELD_ENABLE_AZURE_COLLECTION=1 and restart the local server."})
+                subscription_id = os.environ.get("AZURE_SUBSCRIPTION_ID", "")
+                if not subscription_id:
+                    return self._send(400, {"error": "Set AZURE_SUBSCRIPTION_ID in the server environment."})
+                from . import azure_provider
+                if self.path.endswith("/activity-logs"):
+                    result = azure_provider.collect_activity_logs(subscription_id, int(body.get("lookback_hours", 24)), int(body.get("max_pages", 10)), int(body.get("max_records", 2000)))
+                    counts = EvidenceStore(DB_PATH).ingest(result["events"]) if result["events"] else {"events_inserted":0,"findings_inserted":0,"incidents_inserted":0}
+                    self._audit_mutation("azure.activity_logs.collect", subscription_id)
+                    return self._send(200, {"ok":True, **{k:v for k,v in result.items() if k != "events"}, "events_returned":len(result["events"]), **counts})
+                result = azure_provider.collect_inventory(subscription_id, int(body.get("max_pages", 10)), int(body.get("max_records", 2000)))
+                self._audit_mutation("azure.inventory.collect", subscription_id)
+                return self._send(200, result)
             return self._send(404, {"error": "Not found"})
         except PermissionError as exc:
             return self._send(403, {"error": str(exc)})
@@ -382,22 +426,24 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as exc:
             return self._send(500, {"error": f"{type(exc).__name__}: {exc}"})
 
-def validate_bind_host(host: str) -> None:
-    """Keep the application bound to loopback; place an authenticated TLS proxy in front for remote access."""
+def validate_bind_host(host: str, container_mode: bool = False) -> None:
+    """Keep native runs on loopback; allow wildcard bind only inside an explicitly configured container."""
     try:
         is_loopback = ipaddress.ip_address(host).is_loopback
     except ValueError:
         is_loopback = False
-    if not is_loopback:
+    # The sole wildcard-bind exception is the supplied container profile; Compose maps its host port to 127.0.0.1 only.
+    if not is_loopback and not (container_mode and host == "0.0.0.0"):  # nosec B104
         raise RuntimeError(
-            "CloudShield is a single-user local lab and may bind only to a loopback IP. "
-            "Bind only to loopback. For remote use, use a separately hardened HTTPS reverse proxy and configured role tokens; this app is single-tenant."
+            "CloudShield may bind only to loopback unless CLOUDSHIELD_CONTAINER_MODE=1 is set inside the supplied container. "
+            "The container must publish its host port on 127.0.0.1 only; this app is single-tenant and not approved for public exposure."
         )
 
 
 def main():
     host = os.environ.get("CLOUDSHIELD_HOST", "127.0.0.1")
-    validate_bind_host(host)
+    container_mode = os.environ.get("CLOUDSHIELD_CONTAINER_MODE") == "1"
+    validate_bind_host(host, container_mode=container_mode)
     port = int(os.environ.get("CLOUDSHIELD_PORT", "8765"))
     server = ThreadingHTTPServer((host, port), Handler)
     print(f"CloudShield Command Center: http://{host}:{port}")

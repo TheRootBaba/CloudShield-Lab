@@ -58,3 +58,8 @@ Open http://127.0.0.1:8765 and use **Run simulation** for offline synthetic data
 ## Safety boundary
 
 Do not enable the AWS collector or inventory commands as part of this $0-cost offline setup. Do not apply either Terraform root. The vulnerable Terraform root is a deliberately insecure training fixture and must never be applied to a production or shared account.
+
+
+## Follow-up dual-provider and operations extension
+
+See `docs/PROVIDER_EXPANSION_REPORT.md` for Azure adapter support, AWS resilience improvements, backup/restore tooling, local container profile and the remaining live-validation gates.

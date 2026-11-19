@@ -1,8 +1,8 @@
-﻿# Detection evaluation methodology
+# Detection evaluation methodology
 
 ## Scope
 
-The versioned fixture corpus (`fixtures/detection_evaluation.json`) labels positive and negative event shapes for the 13 catalogued detection rules. Evaluation is deterministic and reports per-rule and micro-averaged TP/FP/FN/TN, precision, recall, specificity and F1. Every rule change must add or update a positive, negative and relevant adversarial fixture before merge.
+The versioned fixture corpus (`fixtures/detection_evaluation.json`) labels positive and negative AWS/Azure provider event shapes for the 15 catalogued detection rules. Evaluation is deterministic and reports per-rule and micro-averaged TP/FP/FN/TN, precision, recall, specificity and F1. Every rule change must add or update a positive, negative and relevant adversarial fixture before merge.
 
 ## Reproduction
 
@@ -11,7 +11,7 @@ cloudshield evaluate fixtures/detection_evaluation.json --output artifacts/detec
 python -m unittest discover -s tests -v
 ```
 
-The current corpus is a hand-authored regression set, not a random sample. Its 26/26 pass result and 1.0 fixture metrics must never be presented as production precision/recall. The sample does not estimate prevalence, base rates, analyst disposition, alert fatigue, cross-account drift or missed data-plane activity.
+The current corpus is a hand-authored regression set, not a random sample. Its 30/30 pass result and 1.0 fixture metrics must never be presented as production precision/recall. The sample does not estimate prevalence, base rates, analyst disposition, alert fatigue, cross-account drift or missed data-plane activity.
 
 ## Robustness coverage
 
@@ -30,3 +30,6 @@ Each finding now includes `confidence` and `confidence_rationale`. HIGH means th
 ## Real-world label process (future gate)
 
 When independently approved telemetry becomes available: preserve raw source records; de-identify only with documented transformation; have two reviewers independently label rule applicability and severity; adjudicate disagreements; record source coverage and sampling method; separate tuning and holdout periods; version the corpus and label guide; report per-rule metrics with confidence intervals and class prevalence; monitor drift; and retain false-positive/false-negative case reviews. Do not mix synthetic and production metrics.
+
+
+Azure-specific regression cases now include RBAC role-assignment writes and diagnostic-setting deletion, with benign read/write cases to reduce obvious false positives. These are event-pattern rules; they do not validate effective Azure permissions or prove that log export has actually stopped.

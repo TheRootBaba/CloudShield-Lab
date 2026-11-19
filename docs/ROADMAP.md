@@ -169,3 +169,19 @@ See OFFLINE_COMPLETION.md for the handoff and local start instructions.
 - [ ] Independent security review/penetration test, production load test, backup restore and incident-response exercises require external environment and reviewers.
 
 See `docs/PHASES_15_20_REPORT.md` for the exact delivery status and `docs/RELEASE_ASSURANCE.md` for release gates. A checked offline item is not a claim of hosted production readiness.
+
+
+## Provider and operations extension ? 19 November 2026
+
+- [x] Add Microsoft Azure as a second selectable provider alongside AWS.
+- [x] Add bounded read-only Azure ARM inventory and subscription Activity Log collection using `DefaultAzureCredential`.
+- [x] Add Azure Activity Log normalization and conservative RBAC/diagnostic-settings detections with regression fixtures.
+- [x] Add provider status endpoint, explicit enable flag, admin-only API collection routes and CLI commands.
+- [x] Harden AWS continuation-token handling, standard retry configuration and partial-failure reporting.
+- [x] Add automated SQLite online backup, SHA-256 manifest verification and non-overwriting restore CLI.
+- [x] Add a local-only hardened Docker Compose profile and CI container-build job.
+- [x] Document optional RFC 3161 trusted timestamping and WORM archive design.
+- [ ] Live AWS/Azure validation remains dependent on active accounts, least-privilege credentials and separately approved API/cost boundaries.
+- [ ] Browser login/session lifecycle, multi-tenancy, external penetration test, hosted monitoring, production load test and independent incident/restore exercises remain external release gates.
+
+See `docs/PROVIDER_EXPANSION_REPORT.md` for implementation detail and exact verification results.

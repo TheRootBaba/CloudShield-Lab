@@ -68,6 +68,27 @@ def main(argv=None):
     aws.add_argument("--regions", nargs="+", required=True)
     aws.add_argument("--max-pages", type=int, default=1)
     aws.add_argument("--output")
+    azinv = sub.add_parser("azure-inventory", help="Run a bounded, opt-in read-only Azure resource inventory")
+    azinv.add_argument("--subscription-id", default=os.environ.get("AZURE_SUBSCRIPTION_ID"))
+    azinv.add_argument("--max-pages", type=int, default=10)
+    azinv.add_argument("--max-records", type=int, default=2000)
+    azinv.add_argument("--output")
+    azlog = sub.add_parser("azure-activity-logs", help="Read a bounded, opt-in Azure Activity Log window")
+    azlog.add_argument("--subscription-id", default=os.environ.get("AZURE_SUBSCRIPTION_ID"))
+    azlog.add_argument("--lookback-hours", type=int, default=24)
+    azlog.add_argument("--max-pages", type=int, default=10)
+    azlog.add_argument("--max-records", type=int, default=2000)
+    azlog.add_argument("--output")
+    bk = sub.add_parser("backup", help="Create a verified SQLite online backup and SHA-256 manifest")
+    bk.add_argument("--database", default="artifacts/evidence.sqlite3")
+    bk.add_argument("--output", required=True)
+    vb = sub.add_parser("verify-backup", help="Verify a SQLite backup against its manifest and integrity check")
+    vb.add_argument("file")
+    vb.add_argument("--manifest")
+    rb = sub.add_parser("restore-backup", help="Restore a verified backup to a new, non-existing path")
+    rb.add_argument("file")
+    rb.add_argument("--manifest")
+    rb.add_argument("--destination", required=True)
     args = p.parse_args(argv)
 
     if args.command == "analyze":
@@ -124,6 +145,33 @@ def main(argv=None):
             raise SystemExit("AWS inventory is disabled. Set CLOUDSHIELD_ENABLE_AWS_INVENTORY=1 to explicitly opt in.")
         from .aws_inventory import collect_inventory
         result = collect_inventory(args.regions, args.max_pages)
+        if args.output:
+            output_path = Path(args.output)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(json.dumps(result, indent=2, default=str) + "\n", encoding="utf-8")
+    elif args.command == "backup":
+        from .backup import backup_database
+        result = backup_database(args.database, args.output)
+    elif args.command == "verify-backup":
+        from .backup import verify_backup
+        result = verify_backup(args.file, args.manifest)
+        if not result["valid"]:
+            print(json.dumps(result, indent=2, sort_keys=True))
+            return 1
+    elif args.command == "restore-backup":
+        from .backup import restore_backup
+        result = restore_backup(args.file, args.destination, args.manifest)
+    elif args.command in {"azure-inventory", "azure-activity-logs"}:
+        if os.environ.get("CLOUDSHIELD_ENABLE_AZURE_COLLECTION") != "1":
+            raise SystemExit("Azure collection is disabled. Set CLOUDSHIELD_ENABLE_AZURE_COLLECTION=1 to explicitly opt in.")
+        if not args.subscription_id:
+            raise SystemExit("Provide --subscription-id or set AZURE_SUBSCRIPTION_ID")
+        from . import azure_provider
+        if args.command == "azure-inventory":
+            result = azure_provider.collect_inventory(args.subscription_id, args.max_pages, args.max_records)
+        else:
+            result = azure_provider.collect_activity_logs(args.subscription_id, args.lookback_hours, args.max_pages, args.max_records)
+            result["analysis"] = analyze_payload(result["events"])
         if args.output:
             output_path = Path(args.output)
             output_path.parent.mkdir(parents=True, exist_ok=True)

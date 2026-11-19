@@ -55,7 +55,10 @@ class CloudEvent:
         actor_text = str(actor)
         account_match = re.search(r"arn:[^:]+:[^:]*::(\d{12}):", actor_text)
         account_id = detail.get("recipientAccountId") or detail.get("accountId") or (account_match.group(1) if account_match else "unknown")
-        return cls(event_id,time,str(event_source or "unknown"),str(event_name),actor_text,str(detail.get("sourceIPAddress") or detail.get("sourceIp") or "unknown"),str(detail.get("awsRegion") or detail.get("region") or "unknown"),str(account_id),tuple(sorted(set(ids))),rp,detail.get("responseElements") or {},p,"synthetic" if isinstance(p.get("cloudshield_lab"), dict) else ("securityhub" if "findings" in p or "AwsAccountId" in detail else "cloudtrail"))
+        source_format = ("synthetic" if isinstance(p.get("cloudshield_lab"), dict) else
+                         "azure_activity_log" if event_source == "azure.activitylogs" or p.get("cloudshield_source_format") == "azure_activity_log" else
+                         "securityhub" if "findings" in p or "AwsAccountId" in detail else "cloudtrail")
+        return cls(event_id,time,str(event_source or "unknown"),str(event_name),actor_text,str(detail.get("sourceIPAddress") or detail.get("sourceIp") or "unknown"),str(detail.get("awsRegion") or detail.get("region") or "unknown"),str(account_id),tuple(sorted(set(ids))),rp,detail.get("responseElements") or {},p,source_format)
     def to_dict(self) -> dict[str, Any]:
         result=asdict(self); result["resource_ids"]=list(self.resource_ids); return result
 

@@ -1,24 +1,41 @@
-﻿# Cloud provider adapter design
+# Cloud provider adapter design
 
-## Current state
+## Supported providers
 
-Offline event normalization, mock-tested AWS CloudTrail collection and bounded mock-tested inventory exist. Live AWS validation, multi-region/organization coverage and authoritative inventory are deferred. This document defines the future adapter contract without making network calls or enabling AWS.
+CloudShield now has two selectable provider adapters: AWS and Microsoft Azure. Both are disabled by default, read-only and explicitly invoked.
 
-## Required adapter contract
+### AWS
 
-Each provider adapter should expose `capabilities`, `required_permissions`, `collect_events(cursor, time_range, page_budget)`, and `inventory(scope, page_budget)`. Every response should include provider/account/tenant identity, region, collection start/end, cursor state, pages and API-call counts, truncation, partial failures, retry counts, permission errors and source provenance. A successful partial result must never be labelled complete.
+- CloudTrail management event history through `LookupEvents`.
+- Bounded EC2 instance/security-group, S3 bucket-name, IAM role/user metadata inventory.
+- Standard botocore retry mode with four total attempts for live clients; continuation tokens are bounded and repeated tokens stop safely. Reported page/API counts are logical SDK operations and do not include internal retry attempts.
+- Partial operation failures are reported without silently labelling the overall resource inventory complete.
 
-## Pagination and resilience requirements
+### Azure
 
-- Use provider continuation tokens exactly as returned; detect repeated tokens and stop safely.
+- Subscription-scoped ARM resource metadata inventory.
+- Subscription Activity Log collection for a bounded UTC time window.
+- `DefaultAzureCredential` authentication; Azure SDK retry policy configured for transient HTTP errors. Reported page/API counts are logical SDK operations and do not include internal retry attempts.
+- Page and record caps, partial-page retention, continuation/truncation reporting, subscription provenance and required permission actions.
+- Conservative detections for role assignment writes and diagnostic-setting deletion.
+
+See `docs/AZURE_PROVIDER.md` for setup, scopes and limitations.
+
+## Common adapter contract
+
+Each provider result should expose provider/account/subscription identity, operation scope, collection start/end, page and record counts, API-call count, truncation, partial failures, retry behavior, permission errors and source provenance. A successful partial result must never be labelled complete.
+
+## Pagination and resilience
+
+- Use continuation tokens exactly as returned; detect repeated tokens and stop safely.
 - Bound pages, total records, elapsed time and concurrency per run.
-- Retry only transient throttling/5xx/network failures with capped exponential backoff and jitter; do not retry authorization/validation errors.
-- Respect provider retry hints and request quotas; expose retries and final failure in the report.
-- Preserve successful pages when a later page fails, mark the result partial and include the failed operation/region.
-- Avoid automatic polling, write APIs, remediation and resource creation in the read-only validation scope.
+- Use provider SDK standard retry policies for transient throttling/5xx/network errors; do not retry authorization/validation failures.
+- Preserve successful pages when a later page fails, mark the result partial and include the failed operation/scope.
+- Respect provider retry hints and request quotas; expose final failures in the report.
 - Normalize provider timestamps to UTC while preserving original source timestamps and identifiers.
-- Make least-privilege actions and resource scope explicit and test policy simulation separately from live calls.
+- Make least-privilege actions and scope explicit; test permission boundaries with mocks before live validation.
+- No write APIs, remediation, resource creation or deletion are part of these adapters.
 
-## AWS deferred validation plan
+## Live validation gate
 
-After explicit user approval and an active isolated account: review the exact IAM policy, cost boundary, region allowlist, API-call/page budget and teardown/disable plan; use a dedicated non-root identity; validate CloudTrail LookupEvents and each inventory API independently; capture request counts, pagination, throttling and access-denied behavior; compare resource samples against the AWS console/API as ground truth; then revoke temporary permissions. No AWS action is authorized by this design document.
+A live test requires an active isolated account/subscription, reviewed read-only identity, exact scope and page/time budget, explicit cost boundary and approval for API calls. Capture throttling, access-denied and partial-page behavior, compare sample inventory with provider-native views, then revoke temporary access. No live AWS or Azure calls were made for this code extension. Read-only requests may still be subject to provider quotas or charges; no zero-cost claim is made for future live validation.

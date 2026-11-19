@@ -24,11 +24,34 @@ class ApiIntegrationTests(unittest.TestCase):
     def patch(self,path,payload):
         request=Request(self.base+path,data=json.dumps(payload).encode(),headers={"Content-Type":"application/json"},method="PATCH")
         with urlopen(request,timeout=3) as response: return json.loads(response.read())
+    def test_provider_status_lists_aws_and_azure_without_cloud_calls(self):
+        payload = self.get("/api/providers")
+        self.assertEqual({"aws", "azure"}, {provider["id"] for provider in payload["providers"]})
+        self.assertFalse(any(provider["enabled"] for provider in payload["providers"]))
+
+    def test_azure_collector_api_is_opt_in_and_ingests_normalized_events(self):
+        import os
+        from unittest.mock import patch
+        subscription = "12345678-1234-4234-8234-123456789abc"
+        result = {"provider":"azure", "source":"azure-activity-logs", "subscription_id":subscription,
+                  "execution":"live-read-only", "events":[{"eventSource":"azure.activitylogs", "eventName":"Microsoft.Authorization/roleAssignments/write", "recipientAccountId":subscription}],
+                  "event_count":1, "pages_read":1, "api_calls":1, "truncated":False, "partial_failures":[], "complete":True}
+        with patch.dict(os.environ, {"CLOUDSHIELD_ENABLE_AZURE_COLLECTION":"1", "AZURE_SUBSCRIPTION_ID":subscription}):
+            with patch("cloudshield.azure_provider.collect_activity_logs", return_value=result):
+                response = self.post("/api/collector/azure/activity-logs", {})
+        self.assertEqual(1, response["events_returned"])
+        self.assertEqual(1, response["events_inserted"])
+        self.assertEqual("azure", response["provider"])
+        self.assertEqual(1, len(self.get("/api/findings")))
+
     def test_bind_host_must_be_loopback(self):
         api.validate_bind_host("127.0.0.1")
         api.validate_bind_host("::1")
         with self.assertRaises(RuntimeError):
             api.validate_bind_host("0.0.0.0")
+        api.validate_bind_host("0.0.0.0", container_mode=True)
+        with self.assertRaises(RuntimeError):
+            api.validate_bind_host("::", container_mode=True)
         with self.assertRaises(RuntimeError):
             api.validate_bind_host("192.0.2.10")
         with self.assertRaises(RuntimeError):
