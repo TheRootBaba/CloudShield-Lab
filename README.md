@@ -141,6 +141,17 @@ Create a consistent online backup and SHA-256 manifest with `cloudshield backup 
 
 For a local multi-user trial, set CLOUDSHIELD_AUTH_MODE=multi_user before starting the API. The first registered account becomes the administrator. Use the Team control to invite users or create a separate workspace. Each workspace has its own SQLite database; the server selects it from the signed-in session. See docs/MULTI_USER_AUTH.md for configuration, roles, invitation and security limitations.
 
+## Local Windows testing of the production profile (loopback-only)
+
+For a local Firebase test using `.env.production.local` and the localhost certificate, always use `scripts/local-production.ps1`. It creates a private Compose override outside the repository and binds Caddy only to `127.0.0.1:8088` and `127.0.0.1:8443`; do not run the production Compose file directly for this local setup because its default 80/443 bindings are intended for a real public deployment.
+
+~~~powershell
+.\\scripts\\local-production.ps1 up --build -d
+.\\scripts\\local-production.ps1 ps
+~~~
+
+Open `https://localhost:8443`. To view logs use `.\\scripts\\local-production.ps1 logs --tail 100 cloudshield`.
+
 ## Production HTTPS deployment
 
 compose.production.yaml runs the application on an internal-only Docker network behind Caddy; only Caddy is attached to the public edge network. Copy .env.production.example to .env.production, configure a real DNS name and TLS contact, generate a unique bootstrap key with `python -c "import secrets; print(secrets.token_urlsafe(48))"`, and store it in the private environment file. Validate/deploy with `docker compose --env-file .env.production -f compose.production.yaml config --quiet` and `docker compose --env-file .env.production -f compose.production.yaml up --build -d`. On Windows, `scripts/deploy-production.ps1` performs config/build/start plus internal and external HTTPS health checks. The app API port is not published. Do not deploy with the sample domain or without DNS, inbound 80/443, host firewall, secret-file ACLs, monitoring and independent security review. Production deployment and recovery procedures are in docs/DEPLOYMENT_OPERATIONS.md.
