@@ -25,7 +25,7 @@ In Firebase Console for the CloudShield project:
 
 Standard email/password Authentication is available on Firebase's no-cost Spark plan. Advanced MFA and enterprise SAML/OIDC sign-in require Identity Platform capabilities and may require a billing-plan upgrade. Do not upgrade billing or enable paid services without explicit approval.
 
-**Current project check (2026-11-19):** the Firebase Web app is active and the service-account key is available locally, but the Authentication configuration has not yet been initialized (CONFIGURATION_NOT_FOUND). The app integration is therefore implemented and testable, but live sign-in remains blocked until the console prerequisite above is completed.
+**Current project check (2026-11-19):** Firebase Authentication is initialized and Email/Password is enabled for project cloudshield-ae534. The local CloudShield API reports the Firebase provider configured, the Identity Toolkit endpoint accepts the public app key (an invalid-email diagnostic returns INVALID_EMAIL rather than CONFIGURATION_NOT_FOUND), and the local auth store reports bootstrap_required=false. Live sign-in is therefore configured; actual account attempts can still fail for account-specific reasons such as an existing email, weak password, unverified address, rate limiting or an unauthorized domain.
 
 ## Environment
 
@@ -89,3 +89,20 @@ Before deploying:
 - Device/session management UI, invitation email delivery, and automated existing-account linking are not included.
 - Firebase Auth's email templates and authorized domains must be configured in the console.
 - Public deployment, external monitoring, off-site backups, SMTP delivery, and live cloud-provider integrations still require their own credentials and infrastructure approvals.
+
+## Troubleshooting browser authentication
+
+The browser's Firebase SDK converts Identity Toolkit HTTP 400 responses into Firebase error codes. The HTTP status alone is not diagnostic; inspect the Firebase SDK error code rendered in the CloudShield form or the response JSON error.message in DevTools → Network → accounts:signUp.
+
+| Firebase error | Meaning | User action |
+|---|---|---|
+| auth/email-already-in-use | Firebase account already exists | Switch to Sign in; use Forgot password if necessary. Do not repeatedly submit Create account. |
+| auth/weak-password | Password does not meet Firebase policy | Choose a stronger password (CloudShield requires at least 12 characters for registration). |
+| auth/invalid-email | Email address is malformed | Correct the email address. |
+| auth/operation-not-allowed | Email/password provider is disabled | Enable Email/Password in Firebase Console. |
+| auth/unauthorized-domain | Current hostname is not authorized | Add the exact hostname in Authentication → Settings → Authorized domains. |
+| auth/too-many-requests | Firebase rate limiting | Wait before retrying; do not automate repeated attempts. |
+| auth/network-request-failed | Browser could not reach Firebase | Check connectivity, DNS, proxy and privacy extensions. |
+| auth/invalid-credential | Sign-in credential is not accepted | Recheck email/password; if unverified, sign in to trigger another verification email. |
+
+A GET /api/auth/me response of 401 before a CloudShield session is issued is expected. After a successful Firebase sign-in, CloudShield verifies the Firebase ID token and creates its own session cookie; subsequent /api/auth/me requests should return the CloudShield user. A Firebase account existing by itself does not yet imply that a CloudShield workspace membership has been created.

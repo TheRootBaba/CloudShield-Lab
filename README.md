@@ -4,6 +4,10 @@
 
 CloudShield is an engineering lab and portfolio project. It is not a production CSPM/SIEM, not a replacement for GuardDuty or Security Hub, and not a claim of comprehensive cloud threat detection.
 
+## Current product capabilities
+
+For a plain-language breakdown of what works now, what the empty dashboard means, and the remaining release gates, see [docs/CURRENT_CAPABILITIES.md](docs/CURRENT_CAPABILITIES.md).
+
 ## What is implemented
 
 - Responsive security command center: overview, incidents, detections, relationship paths, evidence vault, data sources and rule library.

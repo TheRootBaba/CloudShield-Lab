@@ -75,3 +75,11 @@ The local Docker stack remains running and healthy. Caddy is exposed only on 127
 - Pull request: https://github.com/TheRootBaba/CloudShield-Lab/pull/12 (draft; awaiting CI and review)
 
 No Firebase billing changes, Supabase changes, unrelated Docker service changes, or public deployments were made.
+
+## Follow-up validation addendum — 19 November 2026
+
+After the initial report above, Firebase Authentication was enabled in the Firebase Console and localhost was confirmed as an authorized domain. A live read-only diagnostic against Identity Toolkit using an intentionally malformed email returned HTTP 400 INVALID_EMAIL, which confirms the project/API key reached an initialized email/password endpoint rather than CONFIGURATION_NOT_FOUND. No account was created by this diagnostic. The local CloudShield auth status now reports bootstrap_required=false, and the connected browser tab shows an authenticated administrator session.
+
+A user-reported accounts:signUp HTTP 400 still needs the exact Firebase SDK error code or response JSON to identify the specific account-level rejection. Common cases include an already-used email, weak password, malformed email, rate limiting or unauthorized domain. See the troubleshooting table in FIREBASE_AUTH.md.
+
+The current frontend refinement adds a first-run guided scenario selector and import path, Firebase-specific actionable error messages, a password visibility toggle, and clearer AWS/Azure provider boundaries. These UI changes are locally build-verified; live email delivery, password reset delivery, and additional-user invitation flows still require end-to-end testing with real inboxes and separate test accounts.
