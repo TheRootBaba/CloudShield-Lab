@@ -1,4 +1,4 @@
-﻿# Delivery roadmap and progress
+# Delivery roadmap and progress
 
 CloudShield Lab is a local-first defensive engineering lab. A checked item means the implementation and local automated checks exist; it does not imply production readiness or live-cloud validation.
 
@@ -128,3 +128,60 @@ The app binds to 127.0.0.1 by default. It is not a production CSPM/SIEM, does no
 - [ ] Production telemetry, hosted multi-user security, trusted timestamping and authoritative organization-wide inventory remain external gates.
 
 See OFFLINE_COMPLETION.md for the handoff and local start instructions.
+
+
+## Phases 15?20 ? offline tranche (19 November 2026)
+
+### Phase 15 ? API security controls
+- [x] Optional role-specific bearer-token authentication and analyst/responder/admin authorization for API routes.
+- [x] 32-character minimum unique tokens, constant-time comparison and fail-closed token configuration.
+- [x] Per-IP in-memory request limits, strict JSON object/content-type/length validation and 2 MiB cap.
+- [x] Cross-origin Origin rejection for writes and restrictive security response headers.
+- [x] SQLite mutation audit entries for workflow, notes, ingest, simulation and AWS collector invocation.
+- [x] Threat model and explicit residual-risk/deployment boundary.
+- [ ] Browser UI login/token lifecycle, MFA/SSO, expiring/revocable sessions, tenant isolation, distributed rate limiting and independent penetration test.
+
+### Phase 16 ? evidence custody
+- [x] Versioned bundle v1.1, producer/export metadata, collection scope and source-format provenance.
+- [x] Strict bundle version/provenance/count/reference checks and existing digest/tamper tests.
+- [x] Detached Ed25519 signature and independently trusted public-key verification.
+- [x] Key rotation, retention/deletion and external verification procedure documented.
+- [ ] Trusted timestamping, immutable WORM archive and externally managed key registry.
+
+### Phase 17 ? detection quality
+- [x] 26-case labelled fixture corpus and deterministic per-rule/micro metrics.
+- [x] Explicit confidence tier and rationale on findings; documented severity/confidence semantics.
+- [x] Regression coverage for duplicate IDs, malformed/missing timestamps, out-of-order timelines and adversarial private/denied cases.
+- [x] Real-world independent label-review methodology documented.
+- [ ] Representative production labels, statistically meaningful performance and calibrated confidence remain external gates.
+
+### Phase 18 ? cloud integrations (deferred)
+- [x] Provider adapter contract documents bounded pagination, retry/backoff, throttling, partial failure, provenance and least-privilege requirements.
+- [x] Existing AWS adapters remain opt-in and mock-tested.
+- [ ] Live CloudTrail/Security Hub and multi-region/organization validation intentionally deferred until active account and separately approved cost boundary. No AWS calls made in this tranche.
+
+### Phase 19 ? operations design
+- [x] Local build/run configuration, secret guidance, health/logging, backup/restore, rollback and recovery runbooks documented.
+- [ ] Production container/hosted deployment, central monitoring/alerting and exercised backup restore deferred; current UI has no login lifecycle and app remains single-tenant/loopback-only.
+
+### Phase 20 ? assurance preparation
+- [x] Release checklist, risk register, known limitations and support policy documented.
+- [ ] Independent security review/penetration test, production load test, backup restore and incident-response exercises require external environment and reviewers.
+
+See `docs/PHASES_15_20_REPORT.md` for the exact delivery status and `docs/RELEASE_ASSURANCE.md` for release gates. A checked offline item is not a claim of hosted production readiness.
+
+
+## Provider and operations extension ? 19 November 2026
+
+- [x] Add Microsoft Azure as a second selectable provider alongside AWS.
+- [x] Add bounded read-only Azure ARM inventory and subscription Activity Log collection using `DefaultAzureCredential`.
+- [x] Add Azure Activity Log normalization and conservative RBAC/diagnostic-settings detections with regression fixtures.
+- [x] Add provider status endpoint, explicit enable flag, admin-only API collection routes and CLI commands.
+- [x] Harden AWS continuation-token handling, standard retry configuration and partial-failure reporting.
+- [x] Add automated SQLite online backup, SHA-256 manifest verification and non-overwriting restore CLI.
+- [x] Add a local-only hardened Docker Compose profile and CI container-build job.
+- [x] Document optional RFC 3161 trusted timestamping and WORM archive design.
+- [ ] Live AWS/Azure validation remains dependent on active accounts, least-privilege credentials and separately approved API/cost boundaries.
+- [ ] Browser login/session lifecycle, multi-tenancy, external penetration test, hosted monitoring, production load test and independent incident/restore exercises remain external release gates.
+
+See `docs/PROVIDER_EXPANSION_REPORT.md` for implementation detail and exact verification results.

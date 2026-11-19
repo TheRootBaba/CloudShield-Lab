@@ -13,7 +13,9 @@ class FakeClient:
         self.calls.append((name, kwargs))
         response = self.responses[name]
         if isinstance(response, list):
-            return response.pop(0)
+            response = response.pop(0)
+        if isinstance(response, Exception):
+            raise response
         return response
 
     def describe_instances(self, **kwargs):
@@ -96,6 +98,28 @@ class AwsInventoryTests(unittest.TestCase):
         self.assertEqual(2, len(roles))
         self.assertTrue(any(name == "list_roles" and kwargs.get("Marker") == "page-2"
                             for name, kwargs in iam.calls))
+
+    def test_partial_failure_preserves_successful_inventory_pages(self):
+        session = FakeSession()
+        ec2 = session.clients["ec2"]
+        ec2.responses["describe_instances"] = [
+            {"Reservations": [{"Instances": [{"InstanceId":"i-kept","InstanceType":"t3.micro"}]}], "NextToken":"page-2"},
+            RuntimeError("access denied on page two"),
+        ]
+        result = collect_inventory(["us-east-1"], max_pages=2, session=session)
+        self.assertTrue(any(r.get("resource_id") == "i-kept" for r in result["resources"]))
+        self.assertFalse(result["collection_complete"])
+        self.assertTrue(any(f["operation"] == "describe_instances" for f in result["partial_failures"]))
+
+    def test_repeated_continuation_token_stops_safely(self):
+        session = FakeSession()
+        session.clients["ec2"].responses["describe_instances"] = [
+            {"Reservations": [], "NextToken":"same"},
+            {"Reservations": [], "NextToken":"same"},
+        ]
+        result = collect_inventory(["us-east-1"], max_pages=2, session=session)
+        self.assertTrue(result["truncated"])
+        self.assertTrue(any(f["type"] == "RepeatedContinuationToken" for f in result["partial_failures"]))
 
     def test_invalid_region_rejected_before_client_use(self):
         session = FakeSession()

@@ -24,7 +24,13 @@ def build_bundle(path,incident_id):
    rows=db.execute("SELECT payload_json,payload_sha256 FROM findings WHERE event_id=? ORDER BY rule_id",(eid,)).fetchall()
    findings.extend({"finding":json.loads(r["payload_json"]),"sha256":r["payload_sha256"]} for r in rows)
   activity=workflow
-  body={"bundle_version":"1.0","generated_at":datetime.now(timezone.utc).isoformat(timespec="seconds"),"incident":{"data":incident,"sha256":inc["payload_sha256"]},"workflow":activity,"events":events,"findings":findings}
+  generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds")
+  provenance=sorted({str(item["event"].get("source_format", "unknown")) for item in events})
+  body={"bundle_version":"1.1","generated_at":generated_at,
+        "producer":{"name":"CloudShield Lab","version":"0.3.0"},
+        "collection_metadata":{"exported_at":generated_at,"event_count":len(events),"source_formats":provenance,
+                               "collection_scope":"Only records referenced by this incident in the local evidence database"},
+        "incident":{"data":incident,"sha256":inc["payload_sha256"]},"workflow":activity,"events":events,"findings":findings}
   body["manifest"]={"hash_algorithm":"SHA-256","bundle_sha256":digest(body),"event_count":len(events),"finding_count":len(findings),"activity_count":len(activity["activity"])}
   return body
  finally:db.close()
@@ -32,6 +38,24 @@ def build_bundle(path,incident_id):
 def verify_bundle(bundle):
  if not isinstance(bundle,dict):return {"valid":False,"errors":["Bundle must be a JSON object"],"checked":{}}
  errors=[]
+ if bundle.get("bundle_version") != "1.1":
+  errors.append("Unsupported bundle version")
+ generated_at=bundle.get("generated_at")
+ producer=bundle.get("producer")
+ try:
+  if not isinstance(generated_at,str): raise ValueError("missing timestamp")
+  datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
+ except (TypeError, ValueError):
+  errors.append("Bundle export timestamp missing or invalid")
+ if not isinstance(producer,dict) or not isinstance(producer.get("name"),str) or not isinstance(producer.get("version"),str):
+  errors.append("Bundle producer metadata missing or malformed")
+ metadata=bundle.get("collection_metadata")
+ raw_events=bundle.get("events",[])
+ expected_events=len(raw_events) if isinstance(raw_events,list) else -1
+ if (not isinstance(metadata,dict) or not isinstance(metadata.get("source_formats"),list)
+     or not isinstance(metadata.get("collection_scope"),str) or not metadata.get("collection_scope")
+     or metadata.get("event_count") != expected_events):
+  errors.append("Collection metadata missing or inconsistent")
  manifest=bundle.get("manifest")
  if not isinstance(manifest,dict):return {"valid":False,"errors":["Missing manifest"],"checked":{}}
  if manifest.get("hash_algorithm")!="SHA-256":errors.append("Unsupported hash algorithm")

@@ -55,6 +55,12 @@ class DetectorTests(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].severity, "CRITICAL")
 
+    def test_findings_include_explainable_confidence_tier(self):
+        event = CloudEvent.from_dict({"eventSource":"ec2.amazonaws.com","eventName":"AuthorizeSecurityGroupIngress","requestParameters":{"ipPermissions":[{"ipProtocol":"tcp","fromPort":22,"toPort":22,"ipRanges":[{"cidrIp":"0.0.0.0/0"}]}]}})
+        finding = analyze_event(event)[0].to_dict()
+        self.assertEqual("HIGH", finding["confidence"])
+        self.assertIn("explicit", finding["confidence_rationale"])
+
     def test_unrelated_event_produces_no_finding(self):
         event = CloudEvent.from_dict({
             "eventSource": "ec2.amazonaws.com",

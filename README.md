@@ -1,4 +1,4 @@
-﻿# CloudShield Lab
+# CloudShield Lab
 
 **A local-first cloud security command center for detection, investigation and evidence-led verification.**
 
@@ -8,7 +8,7 @@ CloudShield is an engineering lab and portfolio project. It is not a production 
 
 - Responsive security command center: overview, incidents, detections, relationship paths, evidence vault, data sources and rule library.
 - Local HTTP API backed by the detection pipeline and SQLite evidence store.
-- CloudTrail and AWS Security Hub event normalization.
+- CloudTrail and AWS Security Hub event normalization, plus Azure Activity Log normalization.
 - Explainable detections for selected IAM, S3, EC2/network, CloudTrail, KMS, Lambda and RDS event patterns.
 - Offline synthetic scenarios, including a four-step multi-stage sequence. Synthetic source provenance is retained.
 - Incident grouping by actor/account and time window, with a graph view of observed time/resource relationships. Graph edges are hypotheses, not proof of causation.
@@ -20,6 +20,7 @@ CloudShield is an engineering lab and portfolio project. It is not a production 
 - A labelled detection evaluation harness with per-rule metrics; fixture metrics are not production accuracy claims.
 - Optional Ed25519 signatures for portable incident evidence bundles, using encrypted private keys and detached signatures.
 - Optional bounded read-only AWS inventory for selected EC2, security-group, S3 bucket-name and IAM metadata; disabled unless explicitly enabled.
+- Optional bounded read-only Azure Resource Manager inventory and subscription Activity Log collection; disabled unless explicitly enabled.
 
 ## Quick start (Windows PowerShell)
 
@@ -40,7 +41,7 @@ CLI examples:
 
 ## Import formats
 
-CloudTrail event arrays, CloudTrail Records documents, Security Hub Findings exports, and EventBridge-style objects containing a detail object are supported. Use **Import events** in the UI. The request body is limited to 2 MiB. Evidence is stored in artifacts/evidence.sqlite3 by default. Set CLOUDSHIELD_DB to choose another path.
+CloudTrail event arrays, CloudTrail Records documents, Security Hub Findings exports, Azure Activity Log exports, and EventBridge-style objects containing a detail object are supported. Use **Import events** in the UI. The request body is limited to 2 MiB. Evidence is stored in artifacts/evidence.sqlite3 by default. Set CLOUDSHIELD_DB to choose another path.
 
 ## Optional live AWS CloudTrail collection
 
@@ -53,6 +54,10 @@ Live collection is off by default and is a one-shot, read-only lookup. It uses t
 
 The collector reads up to five pages of 50 events (250 maximum per run), does not poll continuously, and makes no AWS write calls. AWS API usage and related services may incur charges under your account. Do not use root credentials. No AWS resources are created by the local API.
 
+## Optional live Azure collection
+
+Azure is supported as the second provider. Install **python -m pip install -e .[azure]**, authenticate using `az login` or another supported `DefaultAzureCredential` source, and set `AZURE_SUBSCRIPTION_ID`. Collection remains disabled until `CLOUDSHIELD_ENABLE_AZURE_COLLECTION=1` is set in the process environment. Then run `cloudshield azure-inventory --max-pages 10 --max-records 2000` or `cloudshield azure-activity-logs --lookback-hours 24 --max-pages 10 --max-records 2000`. The API exposes `GET /api/providers` and admin-only Azure collector routes. Minimum intended permissions are `Microsoft.Resources/subscriptions/resources/read` and `Microsoft.Insights/eventtypes/values/read`; see [docs/AZURE_PROVIDER.md](docs/AZURE_PROVIDER.md). The adapter covers one subscription and control-plane Activity Logs; it does not query Defender for Cloud, Entra ID sign-ins, data-plane logs or management groups. No live Azure calls are made by default.
+
 ## Detection and investigation boundaries
 
 See docs/DETECTION_COVERAGE.md for rule IDs and supported patterns.
@@ -60,7 +65,7 @@ See docs/DETECTION_COVERAGE.md for rule IDs and supported patterns.
 - Coverage is selected event-pattern detection, not comprehensive threat detection. Unsupported services, event shapes, data-plane activity and contextual signals can be missed.
 - Synthetic scenarios generate fake CloudTrail-shaped JSON only. They do not execute attacks or call AWS.
 - Incident grouping remains an actor/account/time-window heuristic. The relationship graph makes evidence-backed temporal and resource correlations visible, but does not infer verified causality or a complete attack path. Sequence hypotheses are bounded to 24 hours where timestamps are available; see docs/ATTACK_PATH_CORRELATION.md.
-- The AWS collector is optional and reads CloudTrail management event history only. It is not a streaming pipeline, organization-wide deployment, or guaranteed complete audit feed.
+- The AWS collector is optional and reads CloudTrail management event history only. The Azure adapter reads subscription Activity Logs (control-plane) and ARM resource metadata. Neither is a streaming pipeline, full provider inventory, organization-wide deployment, or guaranteed complete audit feed.
 - SHA-256 fingerprints detect content changes relative to a known digest; they are not digital signatures, trusted timestamps, or proof of source authenticity.
 - Analyst workflow per incident: status transitions, priority, assignee, and append-only activity notes.
 - Portable incident evidence bundles containing incident/event/finding digests, workflow history and a bundle manifest; verifier checks hash integrity and timeline references.
@@ -68,9 +73,13 @@ See docs/DETECTION_COVERAGE.md for rule IDs and supported patterns.
 
 ## Security and operational defaults
 
-The server binds to 127.0.0.1 and rejects non-loopback bind addresses at startup. Do not expose it to a public network. No authentication is implemented because this is a loopback-only local lab. Hosted or LAN deployment requires authentication, authorization, CSRF protection, rate limiting, audit controls and deployment hardening.
+The server binds to 127.0.0.1 and rejects non-loopback bind addresses at startup. Uploaded JSON is treated as untrusted input; the API enforces a 2 MiB JSON-object body limit, content-type/length checks, cross-origin Origin rejection, per-IP request limits and restrictive browser security headers. Mutating API operations are recorded in a local SQLite security audit table.
 
-Uploaded JSON is treated as untrusted input. The local API enforces a 2 MiB body limit and sends restrictive browser security headers. No cloud collection, resource creation, remediation or AWS writes happen unless the operator explicitly enables the one-shot collector. Terraform examples remain separate and opt-in.
+Optional API role tokens can be configured with unique `CLOUDSHIELD_ADMIN_TOKEN`, `CLOUDSHIELD_RESPONDER_TOKEN`, and `CLOUDSHIELD_ANALYST_TOKEN` values (each at least 32 characters). When any role token is configured, API requests other than `/api/health` require `Authorization: Bearer <token>`. Analysts can read and verify bundles; responders can change workflow, add notes, ingest and simulate; only admins can invoke the opt-in AWS collector. Tokens are long-lived environment secrets and must not be committed. When no tokens are configured, the app remains unauthenticated in loopback-only local mode.
+
+**Do not expose the Python listener directly to a LAN or public network.** The React UI does not yet implement a login/token lifecycle, and this project is not multi-tenant. Remote access requires a separately hardened HTTPS/VPN reverse proxy and server-side identity/token injection, plus the external controls listed in `docs/SECURITY_THREAT_MODEL.md` and `docs/RELEASE_ASSURANCE.md`. API tokens alone do not make a hosted deployment production-ready.
+
+No cloud collection, resource creation, remediation or cloud writes happen unless an operator explicitly enables a read-only provider collector. Keep both provider toggles disabled for the offline $0 setup. Terraform examples remain separate and opt-in.
 
 ## Phases 9-10: incident workflow and evidence bundles
 
@@ -96,7 +105,7 @@ Install boto3 with **python -m pip install -e ".[aws]"**, then explicitly set **
 
 ## Phase 14 offline hardening
 
-Incident graph correlations now require explicit evidence, avoid ambiguous duplicate event IDs, cap valid timestamp gaps at 24 hours and mark sequence edges as non-causal. API startup rejects non-loopback bind addresses while authentication and tenant isolation remain unimplemented. See docs/ATTACK_PATH_CORRELATION.md.
+Incident graph correlations now require explicit evidence, avoid ambiguous duplicate event IDs, cap valid timestamp gaps at 24 hours and mark sequence edges as non-causal. Later Phase 15 work adds optional API role-token authentication and authorization; browser login, tenant isolation and hosted security remain external gates. See docs/ATTACK_PATH_CORRELATION.md and docs/SECURITY_THREAT_MODEL.md.
 
 ## Terraform safety
 
@@ -112,4 +121,12 @@ MIT License.
 
 ## Offline completion and handoff
 
-See docs/OFFLINE_COMPLETION.md for the 19 November 2026 offline verification snapshot, zero-dollar AWS boundary and remaining external gates.
+See docs/OFFLINE_COMPLETION.md for the offline verification snapshot. The Phase 15?20 delivery and provider expansion are documented in `docs/PHASES_15_20_REPORT.md` and `docs/PROVIDER_EXPANSION_REPORT.md`. See `docs/AZURE_PROVIDER.md`, `docs/TRUSTED_TIMESTAMPING.md`, and `docs/RELEASE_ASSURANCE.md` for current capabilities and remaining external gates.
+
+## Containerized local run
+
+Docker Compose is provided for a local-only deployment. It runs as a non-root user, uses a read-only container filesystem with a persistent data volume, drops Linux capabilities, and publishes only `127.0.0.1:8765` on the host. Build and start with `docker compose up --build -d`, then open `http://127.0.0.1:8765`. Stop with `docker compose down`; preserve the named volume unless intentionally deleting local evidence. Do not change the port binding to `0.0.0.0` or expose this single-user UI to a LAN/public network. See `docs/DEPLOYMENT_OPERATIONS.md`.
+
+## SQLite backup and restore
+
+Create a consistent online backup and SHA-256 manifest with `cloudshield backup --database artifacts/evidence.sqlite3 --output artifacts/backups/evidence-2026-11-19.sqlite3`. Verify it with `cloudshield verify-backup artifacts/backups/evidence-2026-11-19.sqlite3`; restore only to a new path with `cloudshield restore-backup artifacts/backups/evidence-2026-11-19.sqlite3 --destination artifacts/restore/evidence.sqlite3`. Verification checks the manifest digest and SQLite integrity. Store/sign the manifest independently for protection against an attacker who can modify both files.

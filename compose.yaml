@@ -1,0 +1,25 @@
+﻿services:
+  cloudshield:
+    build: .
+    image: cloudshield-lab:local
+    ports:
+      - "127.0.0.1:8765:8765"
+    environment:
+      CLOUDSHIELD_HOST: "0.0.0.0"
+      CLOUDSHIELD_PORT: "8765"
+      CLOUDSHIELD_CONTAINER_MODE: "1"
+      CLOUDSHIELD_DB: "/data/evidence.sqlite3"
+      CLOUDSHIELD_HTTP_LOG: "0"
+    volumes:
+      - cloudshield-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+volumes:
+  cloudshield-data:

@@ -26,3 +26,7 @@ npm-debug.log*
 *.key
 *.p12
 *.pfx
+
+.audit-venv/
+
+.verify-venv/

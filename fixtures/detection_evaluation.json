@@ -1,6 +1,6 @@
 {
-  "corpus_version": "1.0",
-  "description": "Hand-labelled representative event-shape fixtures for deterministic regression evaluation; not production telemetry.",
+  "corpus_version": "1.1",
+  "description": "Hand-labelled AWS and Azure provider event-shape fixtures for deterministic regression evaluation; not production telemetry.",
   "cases": [
     {
       "id": "positive-iam-policy",
@@ -459,6 +459,53 @@
             }
           ]
         }
+      },
+      "expected_rule_ids": []
+    },
+    {
+      "id": "positive-azure-role-assignment",
+      "label": "positive",
+      "event": {
+        "eventSource": "azure.activitylogs",
+        "eventName": "Microsoft.Authorization/roleAssignments/write",
+        "recipientAccountId": "12345678-1234-4234-8234-123456789abc",
+        "userIdentity": {
+          "principalId": "operator@example.test"
+        }
+      },
+      "expected_rule_ids": [
+        "CS-AZ-IAM-001"
+      ]
+    },
+    {
+      "id": "negative-azure-role-read",
+      "label": "negative",
+      "event": {
+        "eventSource": "azure.activitylogs",
+        "eventName": "Microsoft.Authorization/roleAssignments/read",
+        "recipientAccountId": "12345678-1234-4234-8234-123456789abc"
+      },
+      "expected_rule_ids": []
+    },
+    {
+      "id": "positive-azure-diagnostic-delete",
+      "label": "positive",
+      "event": {
+        "eventSource": "azure.activitylogs",
+        "eventName": "Microsoft.Insights/diagnosticSettings/delete",
+        "recipientAccountId": "12345678-1234-4234-8234-123456789abc"
+      },
+      "expected_rule_ids": [
+        "CS-AZ-AUDIT-001"
+      ]
+    },
+    {
+      "id": "negative-azure-diagnostic-write",
+      "label": "negative",
+      "event": {
+        "eventSource": "azure.activitylogs",
+        "eventName": "Microsoft.Insights/diagnosticSettings/write",
+        "recipientAccountId": "12345678-1234-4234-8234-123456789abc"
       },
       "expected_rule_ids": []
     }

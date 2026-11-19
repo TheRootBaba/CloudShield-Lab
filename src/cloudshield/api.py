@@ -19,11 +19,14 @@ from .assets import inventory, relationship_graph
 from .attack_techniques import catalog as technique_catalog
 from .workflow import ensure_schema, get_workflow, update_workflow, add_note
 from .evidence_bundle import build_bundle, verify_bundle
+from .security import SlidingWindowLimiter, authenticate, role_allowed, audit
 
 ROOT = Path(__file__).resolve().parents[2]
 WEB = ROOT / "web"
 DB_PATH = Path(os.environ.get("CLOUDSHIELD_DB", str(ROOT / "artifacts" / "evidence.sqlite3")))
 MAX_BODY = 2 * 1024 * 1024
+_READ_LIMITER = SlidingWindowLimiter(120)
+_WRITE_LIMITER = SlidingWindowLimiter(30)
 
 @contextmanager
 def _connect():
@@ -46,8 +49,13 @@ def _rows(table: str, limit: int = 200):
     _ensure_store()
     if table not in {"events", "findings", "incidents"}:
         raise ValueError("Invalid table")
+    queries = {
+        "events": "SELECT payload_json,payload_sha256 FROM events ORDER BY rowid DESC LIMIT ?",
+        "findings": "SELECT payload_json,payload_sha256 FROM findings ORDER BY rowid DESC LIMIT ?",
+        "incidents": "SELECT payload_json,payload_sha256 FROM incidents ORDER BY rowid DESC LIMIT ?",
+    }
     with _connect() as db:
-        records = db.execute(f"SELECT payload_json,payload_sha256 FROM {table} ORDER BY rowid DESC LIMIT ?", (limit,)).fetchall()
+        records = db.execute(queries[table], (limit,)).fetchall()
     return [{"data": json.loads(body), "sha256": digest} for body, digest in records]
 
 def _dashboard():
@@ -151,6 +159,55 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         if os.environ.get("CLOUDSHIELD_HTTP_LOG", "0") == "1":
             super().log_message(fmt, *args)
+    def _drain_rejected_body(self):
+        """Consume a bounded rejected request body before closing, avoiding TCP reset on unread bytes."""
+        raw_length = self.headers.get("Content-Length", "0")
+        if raw_length.isdigit() and 0 <= int(raw_length) <= MAX_BODY:
+            if int(raw_length):
+                self.rfile.read(int(raw_length))
+        else:
+            self.close_connection = True
+
+    def _authorize(self, method: str, path: str) -> bool:
+        if path == "/api/health":
+            return True
+        if not path.startswith("/api/"):
+            return True
+        remote = self.client_address[0]
+        limiter = _READ_LIMITER if method == "GET" else _WRITE_LIMITER
+        if not limiter.allow(remote):
+            self.close_connection = True
+            self._send(429, {"error": "Request rate limit exceeded"})
+            return False
+        try:
+            role = authenticate(self.headers.get("Authorization"))
+        except RuntimeError as exc:
+            self.close_connection = True
+            self._send(503, {"error": str(exc)})
+            return False
+        if role is None:
+            if method in {"POST", "PATCH", "PUT"}:
+                self._drain_rejected_body()
+            self.close_connection = True
+            self.send_response(401)
+            self.send_header("WWW-Authenticate", "Bearer")
+            self.send_header("Content-Length", "0")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            return False
+        if not role_allowed(role, method, path):
+            if method in {"POST", "PATCH", "PUT"}:
+                self._drain_rejected_body()
+            self.close_connection = True
+            self._send(403, {"error": "Insufficient role"})
+            return False
+        self._cloudshield_role = role
+        return True
+
+    def _audit_mutation(self, action: str, resource: str):
+        role = getattr(self, "_cloudshield_role", "local")
+        audit(DB_PATH, role, action, resource, self.client_address[0])
+
     def _send(self, status: int, payload: Any, content_type="application/json; charset=utf-8"):
         body = payload if isinstance(payload, bytes) else (json.dumps(payload, ensure_ascii=False, default=str).encode() if content_type.startswith("application/json") else str(payload).encode())
         self.send_response(status)
@@ -158,6 +215,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
         self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
         self.end_headers()
@@ -169,15 +228,27 @@ class Handler(BaseHTTPRequestHandler):
         origin = self.headers.get("Origin")
         if origin and origin != "http://" + self.headers.get("Host", ""):
             raise PermissionError("Cross-origin requests are not allowed")
-        length = int(self.headers.get("Content-Length", "0"))
+        if self.headers.get("Transfer-Encoding"):
+            raise ValueError("Transfer-Encoding is not supported")
+        raw_length = self.headers.get("Content-Length", "0")
+        if not raw_length.isdigit():
+            raise ValueError("Invalid Content-Length")
+        length = int(raw_length)
         if length < 0 or length > MAX_BODY:
             raise ValueError("Request body exceeds 2 MiB limit")
         raw = self.rfile.read(length)
-        return json.loads(raw) if raw else {}
+        try:
+            value = json.loads(raw) if raw else {}
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("Request body must contain valid UTF-8 JSON") from exc
+        if not isinstance(value, dict):
+            raise ValueError("Request body must be a JSON object")
+        return value
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
         try:
+            if not self._authorize("GET", path): return
             if path == "/api/health":
                 return self._send(200, {"ok": True, "service": "cloudshield-local-api", "database": str(DB_PATH), "aws_collector_enabled": os.environ.get("CLOUDSHIELD_ENABLE_AWS_COLLECTOR") == "1"})
             if path == "/api/analytics":
@@ -235,14 +306,25 @@ class Handler(BaseHTTPRequestHandler):
                 findings = [json.loads(r[0]) for r in finding_rows]
                 assets = inventory(events, findings)
                 return self._send(200, relationship_graph(events, assets))
-            if path == "/api/collector/status":
+            if path in {"/api/collector/status", "/api/providers"}:
                 try:
                     import boto3
-                    sdk = True
-                    credentials = bool(boto3.Session().get_credentials())
+                    aws_sdk = True
+                    aws_credentials = bool(boto3.Session().get_credentials())
                 except ImportError:
-                    sdk, credentials = False, False
-                return self._send(200, {"enabled": os.environ.get("CLOUDSHIELD_ENABLE_AWS_COLLECTOR") == "1", "sdk_installed": sdk, "credentials_detected": credentials, "mode": "read-only CloudTrail LookupEvents; one-shot, user initiated"})
+                    aws_sdk, aws_credentials = False, False
+                try:
+                    import importlib.util
+                    azure_sdk = all(importlib.util.find_spec(name) is not None for name in ("azure.identity", "azure.mgmt.resource", "azure.mgmt.monitor"))
+                except (ImportError, ModuleNotFoundError, ValueError):
+                    azure_sdk = False
+                return self._send(200, {
+                    "providers": [
+                        {"id":"aws", "name":"Amazon Web Services", "sdk_installed":aws_sdk, "credentials_detected":aws_credentials, "enabled":os.environ.get("CLOUDSHIELD_ENABLE_AWS_COLLECTOR") == "1" or os.environ.get("CLOUDSHIELD_ENABLE_AWS_INVENTORY") == "1", "capabilities":["CloudTrail management event lookup", "bounded EC2/security-group/S3-name/IAM metadata inventory"]},
+                        {"id":"azure", "name":"Microsoft Azure", "sdk_installed":azure_sdk, "environment_credentials_configured":bool(os.environ.get("AZURE_CLIENT_ID") and os.environ.get("AZURE_TENANT_ID") and os.environ.get("AZURE_CLIENT_SECRET")), "subscription_configured":bool(os.environ.get("AZURE_SUBSCRIPTION_ID")), "credential_chain":"DefaultAzureCredential (environment, workload/managed identity, developer tools)", "enabled":os.environ.get("CLOUDSHIELD_ENABLE_AZURE_COLLECTION") == "1", "capabilities":["Azure Activity Log control-plane events", "bounded Azure Resource Manager metadata inventory"]}
+                    ],
+                    "mode":"explicitly enabled, bounded, read-only, user-initiated collection"
+                })
             if path == "/" or path.startswith("/"):
                 safe = "index.html" if path == "/" else path.lstrip("/")
                 target = (WEB / safe).resolve()
@@ -262,11 +344,18 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(500, {"error": str(exc)})
     def do_PATCH(self):
         try:
+            if not self._authorize("PATCH", urlparse(self.path).path): return
             body=self._body()
             if self.path.startswith("/api/incidents/") and self.path.endswith("/workflow"):
                 incident_id=self.path[len("/api/incidents/"):-len("/workflow")]
-                return self._send(200,update_workflow(DB_PATH,incident_id,body.get("changes",body),body.get("actor","analyst")))
+                role=getattr(self,"_cloudshield_role","local")
+                actor=body.get("actor","analyst") if role == "local" else role
+                result=update_workflow(DB_PATH,incident_id,body.get("changes",body),actor)
+                self._audit_mutation("workflow.update", incident_id)
+                return self._send(200,result)
             return self._send(404,{"error":"Not found"})
+        except PermissionError as exc:
+            return self._send(403,{"error":str(exc)})
         except KeyError as exc:
             return self._send(404,{"error":str(exc).strip("'")})
         except ValueError as exc:
@@ -275,15 +364,20 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(500,{"error":f"{type(exc).__name__}: {exc}"})
     def do_POST(self):
         try:
+            if not self._authorize("POST", urlparse(self.path).path): return
             body = self._body()
             if self.path == "/api/evidence/verify":
                 return self._send(200,verify_bundle(body))
             if self.path.startswith("/api/incidents/") and self.path.endswith("/notes"):
                 incident_id=self.path[len("/api/incidents/"):-len("/notes")]
-                result=add_note(DB_PATH,incident_id,body.get("note"),body.get("actor","analyst"))
+                role=getattr(self,"_cloudshield_role","local")
+                actor=body.get("actor","analyst") if role == "local" else role
+                result=add_note(DB_PATH,incident_id,body.get("note"),actor)
+                self._audit_mutation("incident.note", incident_id)
                 return self._send(200,result)
             if self.path == "/api/ingest":
                 result = EvidenceStore(DB_PATH).ingest(body)
+                self._audit_mutation("evidence.ingest", "user-upload")
                 return self._send(200, {"ok": True, "source": "user-upload", **result})
             if self.path == "/api/simulate":
                 scenario = body.get("scenario", "all")
@@ -294,6 +388,7 @@ class Handler(BaseHTTPRequestHandler):
                     counts = EvidenceStore(DB_PATH).ingest(item["events"])
                     for key, value in counts.items():
                         total[key] += value
+                self._audit_mutation("simulation.run", str(scenario))
                 return self._send(200, {"ok": True, "execution": "offline-synthetic", "cloud_api_calls": 0, "scenarios": [s["scenario"] for s in scenarios], **total})
             if self.path == "/api/collector/aws":
                 if os.environ.get("CLOUDSHIELD_ENABLE_AWS_COLLECTOR") != "1":
@@ -304,7 +399,23 @@ class Handler(BaseHTTPRequestHandler):
                 from .collector import collect_cloudtrail
                 result = collect_cloudtrail(region, int(body.get("lookback_minutes", 60)), int(body.get("max_pages", 5)))
                 counts = EvidenceStore(DB_PATH).ingest(result["events"]) if result["events"] else {"events_inserted": 0, "findings_inserted": 0, "incidents_inserted": 0}
+                self._audit_mutation("aws.collect", region)
                 return self._send(200, {"ok": True, **{k:v for k,v in result.items() if k != "events"}, "events_returned": len(result["events"]), **counts})
+            if self.path in {"/api/collector/azure/activity-logs", "/api/collector/azure/inventory"}:
+                if os.environ.get("CLOUDSHIELD_ENABLE_AZURE_COLLECTION") != "1":
+                    return self._send(403, {"error": "Azure collection disabled. Set CLOUDSHIELD_ENABLE_AZURE_COLLECTION=1 and restart the local server."})
+                subscription_id = os.environ.get("AZURE_SUBSCRIPTION_ID", "")
+                if not subscription_id:
+                    return self._send(400, {"error": "Set AZURE_SUBSCRIPTION_ID in the server environment."})
+                from . import azure_provider
+                if self.path.endswith("/activity-logs"):
+                    result = azure_provider.collect_activity_logs(subscription_id, int(body.get("lookback_hours", 24)), int(body.get("max_pages", 10)), int(body.get("max_records", 2000)))
+                    counts = EvidenceStore(DB_PATH).ingest(result["events"]) if result["events"] else {"events_inserted":0,"findings_inserted":0,"incidents_inserted":0}
+                    self._audit_mutation("azure.activity_logs.collect", subscription_id)
+                    return self._send(200, {"ok":True, **{k:v for k,v in result.items() if k != "events"}, "events_returned":len(result["events"]), **counts})
+                result = azure_provider.collect_inventory(subscription_id, int(body.get("max_pages", 10)), int(body.get("max_records", 2000)))
+                self._audit_mutation("azure.inventory.collect", subscription_id)
+                return self._send(200, result)
             return self._send(404, {"error": "Not found"})
         except PermissionError as exc:
             return self._send(403, {"error": str(exc)})
@@ -315,22 +426,25 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as exc:
             return self._send(500, {"error": f"{type(exc).__name__}: {exc}"})
 
-def validate_bind_host(host: str) -> None:
-    """Prevent accidental LAN/public exposure before auth and tenant isolation exist."""
+def validate_bind_host(host: str, container_mode: bool = False) -> None:
+    """Keep native runs on loopback; allow wildcard bind only inside an explicitly configured container."""
     try:
         is_loopback = ipaddress.ip_address(host).is_loopback
     except ValueError:
         is_loopback = False
-    if not is_loopback:
+    # Require both the explicit profile flag and a container runtime marker; Compose maps host port to 127.0.0.1 only.
+    in_container = Path("/.dockerenv").exists() or Path("/run/.containerenv").exists()
+    if not is_loopback and not (container_mode and in_container and host == "0.0.0.0"):  # nosec B104
         raise RuntimeError(
-            "CloudShield is a single-user local lab and may bind only to a loopback IP. "
-            "Do not expose it to a LAN or public network; authentication and tenant isolation are not implemented."
+            "CloudShield may bind only to loopback unless CLOUDSHIELD_CONTAINER_MODE=1 is set inside the supplied container. "
+            "The container must publish its host port on 127.0.0.1 only; this app is single-tenant and not approved for public exposure."
         )
 
 
 def main():
     host = os.environ.get("CLOUDSHIELD_HOST", "127.0.0.1")
-    validate_bind_host(host)
+    container_mode = os.environ.get("CLOUDSHIELD_CONTAINER_MODE") == "1"
+    validate_bind_host(host, container_mode=container_mode)
     port = int(os.environ.get("CLOUDSHIELD_PORT", "8765"))
     server = ThreadingHTTPServer((host, port), Handler)
     print(f"CloudShield Command Center: http://{host}:{port}")

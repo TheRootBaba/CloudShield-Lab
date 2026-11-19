@@ -1,6 +1,6 @@
 # Detection coverage and limitations
 
-This inventory describes implemented event-pattern rules. It is not a statement of exhaustive AWS threat coverage. Rule behavior depends on expected CloudTrail request fields being present.
+This inventory describes implemented event-pattern rules across AWS and Azure. It is not a statement of exhaustive cloud threat coverage. Rule behavior depends on provider event fields being present.
 
 | Rule | Service | Event patterns | Intent |
 |---|---|---|---|
@@ -17,11 +17,13 @@ This inventory describes implemented event-pattern rules. It is not a statement 
 | CS-LAMBDA-001 | Lambda | AddPermission | Wildcard Lambda invocation principal |
 | CS-RDS-001 | RDS | ModifyDBSnapshotAttribute | RDS snapshot shared with all |
 | CS-SH-001 | Security Hub | Imported finding records | Provider finding normalization |
+| CS-AZ-IAM-001 | Azure Activity Log | Microsoft.Authorization/roleAssignments/write | Azure RBAC role assignment mutation |
+| CS-AZ-AUDIT-001 | Azure Activity Log | Microsoft.Insights/diagnosticSettings/delete | Diagnostic/audit export setting deletion |
 
 ## Validation status
 
 - Curated ATT&CK references are attached to selected rules; mappings are coverage hypotheses, not proof of technique execution.
-- The Phase 11 evaluation corpus includes 26 hand-labelled positive/negative event shapes. All 26 currently pass against the 13 catalogued rules.
+- The current evaluation corpus includes 30 hand-labelled AWS/Azure positive/negative event shapes. All 30 currently pass against the 15 catalogued rules.
 - Fixture-only metrics are perfect on this small corpus by construction and must not be represented as production precision, recall or accuracy.
 
 ## Known blind spots
@@ -29,6 +31,7 @@ This inventory describes implemented event-pattern rules. It is not a statement 
 - No exhaustive service coverage, suppression tuning, behavioral baselines, anomaly detection, threat intelligence or production false-positive measurement.
 - No complete IAM privilege graph, effective-permission evaluation, network reachability analysis or cloud configuration scanner.
 - Some rules depend on exact CloudTrail request parameter shapes. New AWS API versions and alternate wrappers require fixture coverage.
+- Azure coverage is limited to subscription ARM resource metadata and Activity Logs; no Defender for Cloud alerts, Entra ID sign-in/audit events, data-plane logs or management-group discovery.
 - No multi-account organization discovery or broad data-plane event coverage.
 - No automatic response or remediation.
 

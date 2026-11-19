@@ -95,8 +95,9 @@ def verify_signature(bundle: dict[str, Any], signature: dict[str, Any], public_p
     errors = list(bundle_check["errors"])
     if not bundle_check["valid"]:
         return {"valid": False, "errors": errors, "bundle_valid": False, "signature_valid": False}
-    if not isinstance(signature, dict) or signature.get("algorithm") != "Ed25519":
-        return {"valid": False, "errors": ["Unsupported or missing signature algorithm"], "bundle_valid": True, "signature_valid": False}
+    if (not isinstance(signature, dict) or signature.get("signature_version") != "1.0"
+            or signature.get("algorithm") != "Ed25519"):
+        return {"valid": False, "errors": ["Unsupported or missing signature version/algorithm"], "bundle_valid": True, "signature_valid": False}
     serialization, _, public_cls, _, _ = _crypto()
     try:
         public_bytes = Path(public_path).read_bytes()

@@ -1,4 +1,4 @@
-﻿import json, tempfile, threading, unittest
+import json, tempfile, threading, unittest
 from pathlib import Path
 from urllib.request import Request, urlopen
 from http.server import ThreadingHTTPServer
@@ -24,11 +24,38 @@ class ApiIntegrationTests(unittest.TestCase):
     def patch(self,path,payload):
         request=Request(self.base+path,data=json.dumps(payload).encode(),headers={"Content-Type":"application/json"},method="PATCH")
         with urlopen(request,timeout=3) as response: return json.loads(response.read())
+    def test_provider_status_lists_aws_and_azure_without_cloud_calls(self):
+        payload = self.get("/api/providers")
+        self.assertEqual({"aws", "azure"}, {provider["id"] for provider in payload["providers"]})
+        self.assertFalse(any(provider["enabled"] for provider in payload["providers"]))
+
+    def test_azure_collector_api_is_opt_in_and_ingests_normalized_events(self):
+        import os
+        from unittest.mock import patch
+        subscription = "12345678-1234-4234-8234-123456789abc"
+        result = {"provider":"azure", "source":"azure-activity-logs", "subscription_id":subscription,
+                  "execution":"live-read-only", "events":[{"eventSource":"azure.activitylogs", "eventName":"Microsoft.Authorization/roleAssignments/write", "recipientAccountId":subscription}],
+                  "event_count":1, "pages_read":1, "api_calls":1, "truncated":False, "partial_failures":[], "complete":True}
+        with patch.dict(os.environ, {"CLOUDSHIELD_ENABLE_AZURE_COLLECTION":"1", "AZURE_SUBSCRIPTION_ID":subscription}):
+            with patch("cloudshield.azure_provider.collect_activity_logs", return_value=result):
+                response = self.post("/api/collector/azure/activity-logs", {})
+        self.assertEqual(1, response["events_returned"])
+        self.assertEqual(1, response["events_inserted"])
+        self.assertEqual("azure", response["provider"])
+        self.assertEqual(1, len(self.get("/api/findings")))
+
     def test_bind_host_must_be_loopback(self):
         api.validate_bind_host("127.0.0.1")
         api.validate_bind_host("::1")
         with self.assertRaises(RuntimeError):
             api.validate_bind_host("0.0.0.0")
+        from unittest.mock import patch
+        with patch.object(api.Path, "exists", return_value=True):
+            api.validate_bind_host("0.0.0.0", container_mode=True)
+        with self.assertRaises(RuntimeError):
+            api.validate_bind_host("0.0.0.0", container_mode=True)
+        with self.assertRaises(RuntimeError):
+            api.validate_bind_host("::", container_mode=True)
         with self.assertRaises(RuntimeError):
             api.validate_bind_host("192.0.2.10")
         with self.assertRaises(RuntimeError):
@@ -87,6 +114,50 @@ class ApiIntegrationTests(unittest.TestCase):
         self.assertIn("edges", graph)
         rules = self.get("/api/rules")
         self.assertTrue(any(rule["attack_techniques"] for rule in rules))
+
+    def test_configured_role_tokens_gate_api_and_audit_mutations(self):
+        import os
+        from urllib.error import HTTPError
+        admin="A"*40; responder="R"*40; analyst="V"*40
+        old={key:os.environ.get(key) for key in ("CLOUDSHIELD_ADMIN_TOKEN","CLOUDSHIELD_RESPONDER_TOKEN","CLOUDSHIELD_ANALYST_TOKEN")}
+        try:
+            os.environ["CLOUDSHIELD_ADMIN_TOKEN"]=admin
+            os.environ["CLOUDSHIELD_RESPONDER_TOKEN"]=responder
+            os.environ["CLOUDSHIELD_ANALYST_TOKEN"]=analyst
+            with self.assertRaises(HTTPError) as denied:
+                self.get("/api/dashboard")
+            self.assertEqual(401,denied.exception.code)
+            denied.exception.close()
+            request=Request(self.base+"/api/dashboard",headers={"Authorization":"Bearer "+analyst})
+            with urlopen(request,timeout=3) as response:
+                self.assertEqual(200,response.status)
+            payload=json.dumps({"scenario":"multi-stage-compromise"}).encode()
+            request=Request(self.base+"/api/simulate",data=payload,headers={"Content-Type":"application/json","Authorization":"Bearer "+analyst},method="POST")
+            with self.assertRaises(HTTPError) as forbidden:
+                urlopen(request,timeout=3)
+            self.assertEqual(403,forbidden.exception.code)
+            forbidden.exception.close()
+            request=Request(self.base+"/api/simulate",data=payload,headers={"Content-Type":"application/json","Authorization":"Bearer "+responder},method="POST")
+            with urlopen(request,timeout=3) as response:
+                self.assertEqual(200,response.status)
+            import sqlite3
+            db=sqlite3.connect(api.DB_PATH)
+            try:
+                actor,action=db.execute("SELECT actor,action FROM security_audit ORDER BY audit_id DESC LIMIT 1").fetchone()
+            finally:
+                db.close()
+            self.assertEqual(("responder","simulation.run"),(actor,action))
+            request=Request(self.base+"/api/incidents",headers={"Authorization":"Bearer "+responder})
+            with urlopen(request,timeout=3) as response:
+                incident=json.loads(response.read())[0]
+            patch=Request(self.base+"/api/incidents/"+incident["incident_id"]+"/workflow",data=json.dumps({"changes":{"status":"acknowledged"},"actor":"admin"}).encode(),headers={"Content-Type":"application/json","Authorization":"Bearer "+responder},method="PATCH")
+            with urlopen(patch,timeout=3) as response:
+                activity=json.loads(response.read())["activity"][-1]
+            self.assertEqual("responder",activity["actor"])
+        finally:
+            for key,value in old.items():
+                if value is None: os.environ.pop(key,None)
+                else: os.environ[key]=value
 
     def test_rule_inventory_endpoint(self):
         rules=self.get("/api/rules")
