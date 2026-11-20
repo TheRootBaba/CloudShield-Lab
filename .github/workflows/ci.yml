@@ -21,7 +21,7 @@ jobs:
       - name: Upgrade pip
         run: python -m pip install --upgrade pip
       - name: Install package
-        run: python -m pip install -e ".[cloud,signing,dev]"
+        run: python -m pip install -e ".[cloud,signing,dev,firebase]"
       - name: Run test suite with security and recovery coverage
         run: python -m coverage run --source=cloudshield.auth,cloudshield.recovery -m unittest discover -s tests -v
       - name: Enforce authentication and recovery coverage threshold
@@ -29,7 +29,7 @@ jobs:
       - name: Compile Python
         run: python -m compileall -q src tests
       - name: Audit Python dependencies and source
-        run: python -m pip install pip-audit bandit && pip-audit --skip-editable && bandit -q -r src/cloudshield -x tests
+        run: python -m pip install pip-audit bandit && pip-audit --skip-editable && pip-audit -r requirements-cloud.lock --no-deps && bandit -q -r src/cloudshield -x tests
 
   web-assets:
     runs-on: ubuntu-latest
@@ -60,6 +60,9 @@ jobs:
       - name: Validate vulnerable training fixture
         working-directory: terraform/vulnerable
         run: terraform init -backend=false -input=false && terraform validate
+      - name: Validate offsite backup infrastructure
+        working-directory: terraform/backup
+        run: terraform init -backend=false -input=false && terraform validate
 
   container-build:
     runs-on: ubuntu-latest
@@ -70,4 +73,17 @@ jobs:
       - name: Validate local Compose configuration
         run: docker compose config --quiet
       - name: Validate production Compose configuration
-        run: docker compose --env-file .env.production.example -f compose.production.yaml config --quiet
+        run: |
+          mkdir -p /tmp/cloudshield-ci-secrets
+          printf '{"ci":true}' > /tmp/cloudshield-ci-secrets/firebase-admin.json
+          CLOUDSHIELD_FIREBASE_CREDENTIALS_FILE=/tmp/cloudshield-ci-secrets/firebase-admin.json docker compose --env-file .env.production.example -f compose.production.yaml config --quiet
+      - name: Validate optional SMTP notification overlay
+        run: |
+          printf 'ci-only-password' > /tmp/cloudshield-ci-secrets/smtp-password
+          CLOUDSHIELD_FIREBASE_CREDENTIALS_FILE=/tmp/cloudshield-ci-secrets/firebase-admin.json \
+          CLOUDSHIELD_SMTP_PASSWORD_HOST_FILE=/tmp/cloudshield-ci-secrets/smtp-password \
+          CLOUDSHIELD_SMTP_HOST=smtp.example.test \
+          CLOUDSHIELD_SMTP_USERNAME=ci-user \
+          CLOUDSHIELD_SMTP_FROM=alerts@example.test \
+          CLOUDSHIELD_PUBLIC_URL=https://cloudshield.example.test \
+          docker compose --env-file .env.production.example -f compose.production.yaml -f compose.production.smtp.example.yaml config --quiet

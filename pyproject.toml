@@ -14,6 +14,7 @@ dependencies = []
 aws = ["boto3>=1.34,<2"]
 azure = ["azure-identity>=1.25,<2", "azure-mgmt-resource>=23,<26", "azure-mgmt-monitor>=6,<8"]
 cloud = ["boto3>=1.34,<2", "azure-identity>=1.25,<2", "azure-mgmt-resource>=23,<26", "azure-mgmt-monitor>=6,<8"]
+firebase = ["firebase-admin==7.8.0"]
 signing = ["cryptography>=50"]
 dev = ["coverage>=7.6"]
 

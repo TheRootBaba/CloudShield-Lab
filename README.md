@@ -4,6 +4,10 @@
 
 CloudShield is an engineering lab and portfolio project. It is not a production CSPM/SIEM, not a replacement for GuardDuty or Security Hub, and not a claim of comprehensive cloud threat detection.
 
+## Current product capabilities
+
+For the current capability boundary and the Phase 21 delivery record, see [docs/CURRENT_CAPABILITIES.md](docs/CURRENT_CAPABILITIES.md), [docs/CLOUD_OPERATIONS.md](docs/CLOUD_OPERATIONS.md) and [docs/NEXT_PHASES_DELIVERY_REPORT.md](docs/NEXT_PHASES_DELIVERY_REPORT.md).
+
 ## What is implemented
 
 - Responsive security command center: overview, incidents, detections, relationship paths, evidence vault, data sources and rule library.
@@ -21,7 +25,12 @@ CloudShield is an engineering lab and portfolio project. It is not a production 
 - A labelled detection evaluation harness with per-rule metrics; fixture metrics are not production accuracy claims.
 - Optional Ed25519 signatures for portable incident evidence bundles, using encrypted private keys and detached signatures.
 - Optional bounded read-only AWS inventory for selected EC2, security-group, S3 bucket-name and IAM metadata; disabled unless explicitly enabled.
-- Optional bounded read-only Azure Resource Manager inventory and subscription Activity Log collection; disabled unless explicitly enabled.
+- Tenant-scoped AWS STS AssumeRole and Azure managed/workload identity connection registry; global uniqueness prevents reusing one provider identity across workspaces.
+- Separate scheduled collector worker with bounded CloudTrail/Activity Log polling, SDK retry/backoff, six-hour bounded inventory refresh and worker heartbeat.
+- Workspace-persisted live inventory, deduplicated HIGH/CRITICAL alerts and optional STARTTLS SMTP notifications to active admins/responders.
+- Guided finding-specific containment recommendations, independent administrator approval and security audit records; cloud write execution deliberately fails closed.
+- Firebase TOTP enrollment and second-factor challenge UI plus configurable Firebase OIDC/SAML sign-in flows.
+- Opt-in offsite S3 backup Terraform root with SSE-KMS, Object Lock COMPLIANCE retention, dedicated uploader role and isolated restore-drill scripts.
 
 ## Quick start (Windows PowerShell)
 
@@ -44,20 +53,11 @@ CLI examples:
 
 CloudTrail event arrays, CloudTrail Records documents, Security Hub Findings exports, Azure Activity Log exports, and EventBridge-style objects containing a detail object are supported. Use **Import events** in the UI. The request body is limited to 2 MiB. Evidence is stored in artifacts/evidence.sqlite3 by default. Set CLOUDSHIELD_DB to choose another path.
 
-## Optional live AWS CloudTrail collection
+## Live AWS and Azure connections
 
-Live collection is off by default and is a one-shot, read-only lookup. It uses the standard boto3 credential provider chain; CloudShield does not accept or store AWS secret keys.
+Live provider access is configured per workspace from **Data sources**. AWS uses a unique ExternalId and STS AssumeRole; Azure uses a workspace-specific managed identity or workload identity federation. Credentials are never entered into CloudShield. An administrator must configure, test and then explicitly enable each connection. The production Compose profile runs a separate bounded collector worker. Scheduled collection is not a streaming SIEM and provider inventory is intentionally partial. See [docs/CLOUD_OPERATIONS.md](docs/CLOUD_OPERATIONS.md) for exact IAM actions, Azure role permissions, retry bounds, scheduler limits and the operational setup.
 
-1. Install the optional dependency: **python -m pip install -e ".[aws]"**.
-2. Configure a local AWS profile or environment credentials with only cloudtrail:LookupEvents.
-3. Explicitly enable the feature in the server process: **$env:CLOUDSHIELD_ENABLE_AWS_COLLECTOR="1"**
-4. Start the app again and open **Data sources / AWS CloudTrail**. Choose a region and lookback up to 24 hours.
-
-The collector reads up to five pages of 50 events (250 maximum per run), does not poll continuously, and makes no AWS write calls. AWS API usage and related services may incur charges under your account. Do not use root credentials. No AWS resources are created by the local API.
-
-## Optional live Azure collection
-
-Azure is supported as the second provider. Install **python -m pip install -e .[azure]**, authenticate using `az login` or another supported `DefaultAzureCredential` source, and set `AZURE_SUBSCRIPTION_ID`. Collection remains disabled until `CLOUDSHIELD_ENABLE_AZURE_COLLECTION=1` is set in the process environment. Then run `cloudshield azure-inventory --max-pages 10 --max-records 2000` or `cloudshield azure-activity-logs --lookback-hours 24 --max-pages 10 --max-records 2000`. The API exposes `GET /api/providers` and admin-only Azure collector routes. Minimum intended permissions are `Microsoft.Resources/subscriptions/resources/read` and `Microsoft.Insights/eventtypes/values/read`; see [docs/AZURE_PROVIDER.md](docs/AZURE_PROVIDER.md). The adapter covers one subscription and control-plane Activity Logs; it does not query Defender for Cloud, Entra ID sign-ins, data-plane logs or management groups. No live Azure calls are made by default.
+Real provider access requires a dedicated AWS/Azure test account, correctly configured workload identity, least-privilege permissions and explicit cost approval. This repository has not been connected to a real customer cloud account as part of automated validation.
 
 ## Detection and investigation boundaries
 
@@ -76,11 +76,11 @@ See docs/DETECTION_COVERAGE.md for rule IDs and supported patterns.
 
 The server binds to 127.0.0.1 and rejects non-loopback bind addresses at startup. Uploaded JSON is treated as untrusted input; the API enforces a 2 MiB JSON-object body limit, content-type/length checks, cross-origin Origin rejection, request limits keyed to the TCP peer (forwarded headers are not trusted) and restrictive browser security headers. Mutating API operations are recorded in a local SQLite security audit table.
 
-Legacy local mode supports optional API role tokens. For browser accounts and tenant isolation, set CLOUDSHIELD_AUTH_MODE=multi_user; the first account becomes the initial administrator and subsequent users join via single-use invitations. Passwords use scrypt hashes, sessions are HttpOnly/SameSite cookies with 12-hour expiry, and state-changing requests require CSRF validation. Administrators can invite analysts/responders, create separate workspaces and revoke member access. See docs/MULTI_USER_AUTH.md. The production Compose profile enables multi-user auth and Secure cookies by default and requires a unique `CLOUDSHIELD_BOOTSTRAP_TOKEN` (at least 32 characters) to protect first-admin registration. The setup key is passed only to the app container, not Caddy.
+Legacy local mode supports optional API role tokens. For browser accounts and tenant isolation, set CLOUDSHIELD_AUTH_MODE=multi_user; the first account becomes the initial administrator and subsequent users join via single-use invitations. The local password provider uses scrypt hashes and 12-hour HttpOnly/SameSite sessions with CSRF validation. The optional Firebase provider adds verified-email sign-in, password-reset email, server-side ID-token/revocation verification, and a unique Firebase UID mapping while keeping roles and tenant membership in CloudShield SQLite. When Firebase mode is selected, legacy password login/registration is disabled. Administrators can invite analysts/responders, create separate workspaces and revoke member access. See docs/MULTI_USER_AUTH.md, docs/FIREBASE_AUTH.md and the current validation report in docs/FIREBASE_AUTH_REPORT.md. The production Compose profile enables multi-user auth and Firebase provider by default, mounts the Admin SDK key as a read-only Compose secret, and requires a unique CLOUDSHIELD_BOOTSTRAP_TOKEN (at least 32 characters) to protect first-admin registration.
 
-**Do not expose the Python listener directly to a LAN or public network.** The production profile places Caddy HTTPS ingress in front of the private API and requires multi-user auth. It is a single-host deployment template, not an HA SaaS platform. MFA/SSO, email verification, password recovery, external managed secrets/audit, monitoring, independent penetration testing and live cloud validation remain release gates. Do not enable shared server-side cloud credentials in multi-user mode; provider collectors are deliberately blocked until identities are tenant-scoped.
+**Do not expose the Python listener directly to a LAN or public network.** The production profile places Caddy HTTPS ingress in front of the private API and requires multi-user auth. It is a single-host deployment template, not an HA SaaS platform. Firebase email verification and password-reset flows are implemented but require Authentication initialization and provider enablement in the Firebase Console. Firebase TOTP and OIDC/SAML sign-in flows are implemented, but Firebase Identity Platform policy/provider configuration remains an operator task. Centralized metrics/on-call, external managed secrets/audit, independent penetration testing, offsite restore drills and live cloud validation remain release gates. Provider collectors use workspace-scoped identities; do not supply shared static cloud credentials.
 
-No cloud collection, resource creation, remediation or cloud writes happen unless an operator explicitly enables a read-only provider collector. Keep both provider toggles disabled for the offline $0 setup. Terraform examples remain separate and opt-in.
+No cloud collection happens until a workspace administrator configures, tests and explicitly enables a read-only provider connection. Keep all connections disabled for the offline $0 setup. Cloud resource creation/remediation is not implemented. Terraform infrastructure roots remain separate and opt-in.
 
 ## Phases 9-10: incident workflow and evidence bundles
 
@@ -136,6 +136,17 @@ Create a consistent online backup and SHA-256 manifest with `cloudshield backup 
 ## Multi-user browser sign-in and workspace isolation
 
 For a local multi-user trial, set CLOUDSHIELD_AUTH_MODE=multi_user before starting the API. The first registered account becomes the administrator. Use the Team control to invite users or create a separate workspace. Each workspace has its own SQLite database; the server selects it from the signed-in session. See docs/MULTI_USER_AUTH.md for configuration, roles, invitation and security limitations.
+
+## Local Windows testing of the production profile (loopback-only)
+
+For a local Firebase test using `.env.production.local` and the localhost certificate, always use `scripts/local-production.ps1`. It creates a private Compose override outside the repository and binds Caddy only to `127.0.0.1:8088` and `127.0.0.1:8443`; do not run the production Compose file directly for this local setup because its default 80/443 bindings are intended for a real public deployment.
+
+~~~powershell
+.\\scripts\\local-production.ps1 up --build -d
+.\\scripts\\local-production.ps1 ps
+~~~
+
+Open `https://localhost:8443`. To view logs use `.\\scripts\\local-production.ps1 logs --tail 100 cloudshield`.
 
 ## Production HTTPS deployment
 

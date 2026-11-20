@@ -9,7 +9,7 @@ import re
 import ipaddress
 import sqlite3
 from datetime import datetime, timedelta, timezone
-from contextlib import contextmanager
+from contextlib import contextmanager, closing
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
@@ -30,6 +30,7 @@ WEB = ROOT / "web"
 DB_PATH = Path(os.environ.get("CLOUDSHIELD_DB", str(ROOT / "artifacts" / "evidence.sqlite3")))
 _CURRENT_DB = ContextVar("cloudshield_tenant_db", default=None)
 _AUTH_STORE = None
+_FIREBASE_APP = None
 
 def _db_path():
     return _CURRENT_DB.get() or DB_PATH
@@ -44,6 +45,49 @@ def _auth_store():
         tenant_root = Path(os.environ.get("CLOUDSHIELD_TENANT_DIR", str(ROOT / "artifacts" / "tenants")))
         _AUTH_STORE = AuthStore(auth_db, tenant_root)
     return _AUTH_STORE
+
+def _firebase_public_config():
+    provider = os.environ.get("CLOUDSHIELD_AUTH_PROVIDER", "local").strip().lower()
+    return {
+        "provider": provider,
+        "firebase": {
+            "apiKey": os.environ.get("CLOUDSHIELD_FIREBASE_API_KEY", ""),
+            "authDomain": os.environ.get("CLOUDSHIELD_FIREBASE_AUTH_DOMAIN", ""),
+            "projectId": os.environ.get("CLOUDSHIELD_FIREBASE_PROJECT_ID", ""),
+            "appId": os.environ.get("CLOUDSHIELD_FIREBASE_APP_ID", ""),
+            "messagingSenderId": os.environ.get("CLOUDSHIELD_FIREBASE_MESSAGING_SENDER_ID", ""),
+            "ssoProviderId": os.environ.get("CLOUDSHIELD_FIREBASE_SSO_PROVIDER_ID", "").strip(),
+        },
+    }
+
+
+def _verify_firebase_id_token(id_token: str) -> dict:
+    """Verify Firebase-issued browser ID tokens; never trust client-supplied identity fields."""
+    global _FIREBASE_APP
+    if not isinstance(id_token, str) or not id_token or len(id_token) > 16_384:
+        raise PermissionError("A valid Firebase sign-in token is required")
+    project_id = os.environ.get("CLOUDSHIELD_FIREBASE_PROJECT_ID", "").strip()
+    credential_path = (os.environ.get("CLOUDSHIELD_FIREBASE_CREDENTIALS")
+                       or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")).strip()
+    if not project_id or not credential_path:
+        raise RuntimeError("Firebase authentication is not configured on this server")
+    try:
+        import firebase_admin
+        from firebase_admin import auth as firebase_auth, credentials
+        if _FIREBASE_APP is None:
+            try:
+                _FIREBASE_APP = firebase_admin.get_app("cloudshield")
+            except ValueError:
+                credential = credentials.Certificate(credential_path)
+                _FIREBASE_APP = firebase_admin.initialize_app(
+                    credential, {"projectId": project_id}, name="cloudshield")
+        return firebase_auth.verify_id_token(id_token, app=_FIREBASE_APP, check_revoked=True)
+    except RuntimeError:
+        raise
+    except Exception as exc:
+        # Keep provider diagnostics out of the public response.
+        raise PermissionError("Firebase sign-in could not be verified. Sign in again.") from exc
+
 
 def _client_ip(handler):
     """Use the TCP peer for rate limiting and audit attribution.
@@ -213,7 +257,7 @@ class Handler(BaseHTTPRequestHandler):
             self.close_connection = True
 
     def _authorize(self, method: str, path: str) -> bool:
-        if path == "/api/health":
+        if path in {"/api/health", "/api/health/ready"}:
             return True
         if not path.startswith("/api/"):
             return True
@@ -270,7 +314,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
         self.send_header("Cache-Control", "no-store")
-        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
+        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
         for name, value in (extra_headers or []): self.send_header(name, value)
         self.end_headers()
         self.wfile.write(body)
@@ -312,6 +356,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def _auth_get(self, path):
         store = _auth_store()
+        if path == "/api/auth/config":
+            config = _firebase_public_config()
+            firebase = config["firebase"]
+            configured = all(firebase.get(key) for key in ("apiKey", "authDomain", "projectId", "appId", "messagingSenderId"))
+            return self._send(200, {"provider": config["provider"], "firebase": firebase,
+                                    "configured": configured if config["provider"] == "firebase" else True})
         if path == "/api/auth/status":
             bootstrap_required = store.bootstrap_required()
             return self._send(200, {"enabled": True, "bootstrap_required": bootstrap_required,
@@ -328,9 +378,37 @@ class Handler(BaseHTTPRequestHandler):
 
     def _auth_post(self, path):
         store = _auth_store()
-        if path in {"/api/auth/login", "/api/auth/register"} and not _AUTH_LIMITER.allow(_client_ip(self)):
+        if path in {"/api/auth/login", "/api/auth/register", "/api/auth/firebase"} and not _AUTH_LIMITER.allow(_client_ip(self)):
             return self._send(429, {"error":"Too many authentication attempts; try again later"})
         body = self._body()
+        provider = os.environ.get("CLOUDSHIELD_AUTH_PROVIDER", "local").strip().lower()
+        if provider == "firebase" and path in {"/api/auth/login", "/api/auth/register"}:
+            return self._send(403, {"error": "Password authentication is disabled; use Firebase Authentication"})
+        if path == "/api/auth/firebase":
+            if os.environ.get("CLOUDSHIELD_AUTH_PROVIDER", "local").strip().lower() != "firebase":
+                return self._send(404, {"error": "Firebase authentication is not enabled"})
+            claims = _verify_firebase_id_token(body.get("id_token", ""))
+            if claims.get("email_verified") is not True:
+                return self._send(403, {"error": "Verify your email address before accessing CloudShield"})
+            uid, email = claims.get("uid"), claims.get("email")
+            if not isinstance(uid, str) or not isinstance(email, str):
+                return self._send(403, {"error": "Firebase identity is missing a verified email"})
+            store = _auth_store()
+            if store.bootstrap_required():
+                bootstrap_token = os.environ.get("CLOUDSHIELD_BOOTSTRAP_TOKEN", "")
+                provided = body.get("bootstrap_token", "")
+                if bootstrap_token and (not isinstance(provided, str) or len(provided) > 128
+                        or not provided.isascii() or not bootstrap_token.isascii()
+                        or not secrets.compare_digest(provided, bootstrap_token)):
+                    return self._send(403, {"error": "A valid initial administrator setup key is required"})
+            display_name = body.get("display_name") or claims.get("name") or email.split("@", 1)[0]
+            user = store.register_firebase(uid, email, display_name, body.get("tenant_name", ""), body.get("invite_code", ""))
+            EvidenceStore(store.tenant_path(user["tenant_id"]))
+            session, token = store.login_firebase(uid)
+            store.record_audit(session, "firebase.session.created", session.email)
+            response_user = {"user_id":session.user_id,"tenant_id":session.tenant_id,"email":session.email,
+                             "display_name":session.display_name,"role":session.role,"expires_at":session.expires_at}
+            return self._auth_response(response_user, session.csrf_token, token)
         if path == "/api/auth/register":
             bootstrap_token = os.environ.get("CLOUDSHIELD_BOOTSTRAP_TOKEN", "")
             provided_bootstrap = body.get("bootstrap_token", "")
@@ -396,6 +474,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(403, {"error":str(exc)})
         except ValueError as exc:
             self._send(400, {"error":str(exc)})
+        except RuntimeError as exc:
+            self._send(503, {"error":str(exc)})
         except sqlite3.Error:
             self._send(503, {"error":"Authentication storage is temporarily unavailable"})
         return True
@@ -404,7 +484,7 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if self._dispatch_auth(method):
             return
-        if not _auth_enabled() or not path.startswith("/api/") or path == "/api/health":
+        if not _auth_enabled() or not path.startswith("/api/") or path in {"/api/health", "/api/health/ready"}:
             return handler()
         token, csrf = _cookies(self)
         session = _auth_store().get_session(token)
@@ -431,6 +511,28 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         try:
             if not self._authorize("GET", path): return
+            if path == "/api/health/ready":
+                try:
+                    if _auth_enabled():
+                        auth_db = Path(os.environ.get("CLOUDSHIELD_AUTH_DB", str(ROOT / "artifacts" / "auth.sqlite3")))
+                        if not auth_db.is_file():
+                            raise OSError("Authentication database is missing")
+                        with closing(sqlite3.connect(str(auth_db), timeout=2)) as db:
+                            db.execute("SELECT COUNT(*) FROM users").fetchone()
+                            heartbeat = db.execute("SELECT heartbeat_at FROM worker_heartbeat WHERE worker_id='primary'").fetchone() if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='worker_heartbeat'").fetchone() else None
+                        worker_state = "not_started"
+                        if heartbeat:
+                            from datetime import datetime, timezone
+                            last = datetime.fromisoformat(heartbeat[0].replace("Z", "+00:00"))
+                            interval = int(os.environ.get("CLOUDSHIELD_COLLECTION_INTERVAL_SECONDS", "300"))
+                            worker_state = "running" if (datetime.now(timezone.utc) - last).total_seconds() <= interval * 3 else "stale"
+                        payload = {"ok":worker_state == "running", "database":"ok", "worker":worker_state,
+                                   "worker_heartbeat_at":heartbeat[0] if heartbeat else None}
+                        return self._send(200 if worker_state == "running" else 503, payload)
+                    _ensure_store()
+                    return self._send(200, {"ok":True,"database":"ok","worker":"not_required"})
+                except (OSError, sqlite3.Error) as exc:
+                    return self._send(503, {"ok":False,"database":"unavailable","error":type(exc).__name__})
             if path == "/api/health":
                 if _auth_enabled():
                     return self._send(200, {"ok": True, "service": "cloudshield-api"})
@@ -460,7 +562,21 @@ class Handler(BaseHTTPRequestHandler):
                 item = _incident(path.rsplit("/", 1)[-1])
                 return self._send(200, item) if item else self._send(404, {"error": "Incident not found"})
             if path == "/api/findings":
-                return self._send(200, [row["data"] for row in _rows("findings", 500)])
+                _ensure_store()
+                with _connect() as db:
+                    rows = db.execute("SELECT finding_id,payload_json FROM findings ORDER BY rowid DESC LIMIT 500").fetchall()
+                return self._send(200, [{**json.loads(row[1]), "finding_id":row[0]} for row in rows])
+            if path.startswith("/api/findings/") and path.endswith("/recommendations"):
+                finding_id = path[len("/api/findings/"):-len("/recommendations")]
+                _ensure_store()
+                with _connect() as db:
+                    row = db.execute("SELECT payload_json FROM findings WHERE finding_id=?", (finding_id,)).fetchone()
+                if not row:
+                    return self._send(404, {"error":"Finding not found"})
+                from . import cloud_ops
+                finding = json.loads(row[0])
+                return self._send(200, {"finding_id":finding_id, "recommendations":cloud_ops.recommendations(finding),
+                                        "execution_enabled":False, "approval_required":True})
             if path == "/api/events":
                 return self._send(200, [{**row["data"], "fingerprint": row["sha256"]} for row in _rows("events", 500)])
             if path.startswith("/api/evidence/"):
@@ -490,6 +606,15 @@ class Handler(BaseHTTPRequestHandler):
                 findings = [json.loads(r[0]) for r in finding_rows]
                 assets = inventory(events, findings)
                 return self._send(200, relationship_graph(events, assets))
+            if path == "/api/alerts":
+                from . import cloud_ops
+                return self._send(200, cloud_ops.list_alerts(_db_path()))
+            if path == "/api/cloud-inventory":
+                from . import cloud_ops
+                return self._send(200, cloud_ops.list_inventory(_db_path()))
+            if path == "/api/responses":
+                from . import cloud_ops
+                return self._send(200, cloud_ops.list_responses(_db_path()))
             if path in {"/api/collector/status", "/api/providers"}:
                 try:
                     import boto3
@@ -503,13 +628,30 @@ class Handler(BaseHTTPRequestHandler):
                 except (ImportError, ModuleNotFoundError, ValueError):
                     azure_sdk = False
                 if _auth_enabled():
+                    from . import cloud_ops
+                    aws = cloud_ops.get_connection(_db_path(), "aws")
+                    azure = cloud_ops.get_connection(_db_path(), "azure")
                     return self._send(200, {
                         "providers": [
-                            {"id":"aws", "name":"Amazon Web Services", "sdk_installed":aws_sdk, "credentials_detected":False, "enabled":False, "capabilities":["Cloud collection unavailable in shared multi-user mode; tenant-scoped identities are required"]},
-                            {"id":"azure", "name":"Microsoft Azure", "sdk_installed":azure_sdk, "environment_credentials_configured":False, "subscription_configured":False, "enabled":False, "capabilities":["Cloud collection unavailable in shared multi-user mode; tenant-scoped identities are required"]}
-                        ],
-                        "mode":"disabled in shared multi-user mode until provider identities are tenant-scoped"
-                    })
+                            {"id":"aws", "name":"Amazon Web Services", "sdk_installed":aws_sdk,
+                             "credentials_detected":False, "configured":bool(aws), "enabled":bool(aws and aws["enabled"]),
+                             "status":aws.get("status") if aws else "not_configured",
+                             "last_checked_at":aws.get("last_checked_at") if aws else None,
+                             "last_collected_at":aws.get("last_collected_at") if aws else None,
+                             "last_error":aws.get("last_error") if aws else None,
+                             "role_arn":aws.get("role_arn") if aws else None, "region":aws.get("region") if aws else None,
+                             "capabilities":["STS AssumeRole with workspace-specific ExternalId", "CloudTrail LookupEvents", "bounded read-only EC2/security-group/S3/IAM inventory"]},
+                            {"id":"azure", "name":"Microsoft Azure", "sdk_installed":azure_sdk,
+                             "environment_credentials_configured":False, "configured":bool(azure), "enabled":bool(azure and azure["enabled"]),
+                             "status":azure.get("status") if azure else "not_configured",
+                             "last_checked_at":azure.get("last_checked_at") if azure else None,
+                             "last_collected_at":azure.get("last_collected_at") if azure else None,
+                             "last_error":azure.get("last_error") if azure else None,
+                             "tenant_id":azure.get("tenant_id") if azure else None,
+                             "subscription_id":azure.get("subscription_id") if azure else None,
+                             "managed_identity_client_id":azure.get("managed_identity_client_id") if azure else None,
+                             "capabilities":["Workspace-specific managed or workload identity", "subscription Activity Logs", "bounded ARM resource inventory"]}
+                        ], "mode":"workspace-scoped credentials; read-only collection; explicit enablement required"})
                 return self._send(200, {
                     "providers": [
                         {"id":"aws", "name":"Amazon Web Services", "sdk_installed":aws_sdk, "credentials_detected":aws_credentials, "enabled":os.environ.get("CLOUDSHIELD_ENABLE_AWS_COLLECTOR") == "1" or os.environ.get("CLOUDSHIELD_ENABLE_AWS_INVENTORY") == "1", "capabilities":["CloudTrail management event lookup", "bounded EC2/security-group/S3-name/IAM metadata inventory"]},
@@ -560,6 +702,83 @@ class Handler(BaseHTTPRequestHandler):
             body = self._body()
             if self.path == "/api/evidence/verify":
                 return self._send(200,verify_bundle(body))
+            session = getattr(self, "_cloudshield_session", None)
+            actor = session.user_id if session else "local"
+            if self.path in {"/api/providers/aws", "/api/providers/azure"}:
+                if _auth_enabled() and (not session or session.role != "admin"):
+                    return self._send(403, {"error":"Workspace administrator access required"})
+                from . import cloud_ops
+                auth_db = os.environ.get("CLOUDSHIELD_AUTH_DB", str(ROOT / "artifacts" / "auth.sqlite3")) if _auth_enabled() else None
+                workspace_id = session.tenant_id if _auth_enabled() else None
+                if self.path.endswith("/aws"):
+                    result = cloud_ops.configure_aws(_db_path(), body.get("role_arn"), body.get("region", "us-east-1"), actor,
+                        auth_db_path=auth_db, tenant_id=workspace_id)
+                else:
+                    result = cloud_ops.configure_azure(_db_path(), body.get("tenant_id"), body.get("subscription_id"), body.get("managed_identity_client_id"), actor,
+                        auth_db_path=auth_db, workspace_id=workspace_id)
+                self._audit_mutation("provider.configure", result["provider"])
+                return self._send(201, result)
+            if self.path in {"/api/providers/aws/enable", "/api/providers/azure/enable"}:
+                if _auth_enabled() and (not session or session.role != "admin"):
+                    return self._send(403, {"error":"Workspace administrator access required"})
+                from . import cloud_ops
+                provider = "aws" if "/aws/" in self.path else "azure"
+                result = cloud_ops.set_enabled(_db_path(), provider, body.get("enabled"))
+                self._audit_mutation("provider.enable" if result["enabled"] else "provider.disable", provider)
+                return self._send(200, result)
+            if self.path in {"/api/providers/aws/test", "/api/providers/azure/test"}:
+                if _auth_enabled() and (not session or session.role != "admin"):
+                    return self._send(403, {"error":"Workspace administrator access required"})
+                from . import cloud_ops
+                provider = "aws" if "/aws/" in self.path else "azure"
+                try:
+                    if provider == "aws":
+                        from botocore.config import Config
+                        aws_session, cfg = cloud_ops.aws_session(_db_path(), allow_disabled=True)
+                        identity = aws_session.client("sts", config=Config(retries={"mode":"standard","total_max_attempts":4})).get_caller_identity()
+                        if identity.get("Account") != cfg["role_arn"].split(":")[4]:
+                            raise PermissionError("AWS account identity mismatch")
+                        aws_session.client("cloudtrail", region_name=cfg["region"], config=Config(retries={"mode":"standard","total_max_attempts":4})).lookup_events(MaxResults=1)
+                        detail = {"account_id":identity.get("Account"), "arn":identity.get("Arn"), "region":cfg["region"], "cloudtrail_read":"ok"}
+                    else:
+                        credential, cfg = cloud_ops.azure_credential(_db_path(), allow_disabled=True)
+                        try:
+                            from azure.mgmt.resource import ResourceManagementClient, SubscriptionClient
+                            from azure.mgmt.monitor import MonitorManagementClient
+                            subscription = SubscriptionClient(credential).subscriptions.get(cfg["subscription_id"])
+                            if str(getattr(subscription, "tenant_id", "")).lower() != cfg["tenant_id"].lower():
+                                raise PermissionError("Azure subscription tenant does not match the configured workspace tenant")
+                            client = ResourceManagementClient(credential, cfg["subscription_id"])
+                            next(iter(client.resources.list()), None)
+                            monitor = MonitorManagementClient(credential, cfg["subscription_id"])
+                            from datetime import datetime, timedelta, timezone
+                            end = datetime.now(timezone.utc); start = end - timedelta(hours=1)
+                            monitor.activity_logs.list(filter=f"eventTimestamp ge '{start.isoformat()}' and eventTimestamp le '{end.isoformat()}'").by_page().__next__()
+                            detail = {"subscription_id":cfg["subscription_id"], "tenant_id":cfg["tenant_id"], "resource_read":"ok", "activity_log_read":"ok"}
+                        finally:
+                            credential.close()
+                    cloud_ops.mark_provider(_db_path(), provider, status="connected")
+                    self._audit_mutation("provider.connection_test", provider)
+                    return self._send(200, {"ok":True, "provider":provider, "detail":detail})
+                except Exception as exc:
+                    cloud_ops.set_enabled(_db_path(), provider, False)
+                    cloud_ops.mark_provider(_db_path(), provider, status="error", error=type(exc).__name__ + ": " + str(exc))
+                    return self._send(502, {"ok":False, "provider":provider, "error":"Connection test failed; verify role trust and least-privilege permissions."})
+            if self.path.startswith("/api/alerts/") and self.path.endswith("/acknowledge"):
+                if _auth_enabled() and (not session or session.role not in {"admin", "responder"}):
+                    return self._send(403, {"error":"Responder or administrator role required"})
+                from . import cloud_ops
+                alert_id = self.path[len("/api/alerts/"):-len("/acknowledge")]
+                result = cloud_ops.acknowledge_alert(_db_path(), alert_id, actor)
+                self._audit_mutation("alert.acknowledge", alert_id)
+                return self._send(200, result)
+            if self.path == "/api/responses":
+                if _auth_enabled() and (not session or session.role not in {"admin", "responder"}):
+                    return self._send(403, {"error":"Responder or administrator role required"})
+                from . import cloud_ops
+                result = cloud_ops.request_response(_db_path(), body.get("finding_id"), body.get("action"), body.get("rationale"), actor)
+                self._audit_mutation("response.request", result["request_id"])
+                return self._send(201, result)
             if self.path.startswith("/api/incidents/") and self.path.endswith("/notes"):
                 incident_id=self.path[len("/api/incidents/"):-len("/notes")]
                 role=getattr(self,"_cloudshield_role","local")
@@ -569,6 +788,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200,result)
             if self.path == "/api/ingest":
                 result = EvidenceStore(_db_path()).ingest(body)
+                from . import cloud_ops
+                cloud_ops.sync_alerts(_db_path(), [row["data"] for row in _rows("findings", 500)])
                 self._audit_mutation("evidence.ingest", "user-upload")
                 return self._send(200, {"ok": True, "source": "user-upload", **result})
             if self.path == "/api/simulate":
@@ -580,37 +801,109 @@ class Handler(BaseHTTPRequestHandler):
                     counts = EvidenceStore(_db_path()).ingest(item["events"])
                     for key, value in counts.items():
                         total[key] += value
+                from . import cloud_ops
+                cloud_ops.sync_alerts(_db_path(), [row["data"] for row in _rows("findings", 500)])
                 self._audit_mutation("simulation.run", str(scenario))
                 return self._send(200, {"ok": True, "execution": "offline-synthetic", "cloud_api_calls": 0, "scenarios": [s["scenario"] for s in scenarios], **total})
             if self.path == "/api/collector/aws":
+                aws_session = None
                 if _auth_enabled():
-                    return self._send(403, {"error":"Cloud collection is disabled in shared multi-user mode until provider credentials are tenant-scoped."})
-                if os.environ.get("CLOUDSHIELD_ENABLE_AWS_COLLECTOR") != "1":
-                    return self._send(403, {"error": "Live collector disabled. Set CLOUDSHIELD_ENABLE_AWS_COLLECTOR=1 and restart the local server."})
-                region = str(body.get("region", "us-east-1"))
+                    from . import cloud_ops
+                    try:
+                        aws_session, provider_config = cloud_ops.aws_session(_db_path())
+                    except ValueError as exc:
+                        return self._send(403, {"error":str(exc)})
+                    region = provider_config["region"]
+                else:
+                    if os.environ.get("CLOUDSHIELD_ENABLE_AWS_COLLECTOR") != "1":
+                        return self._send(403, {"error": "Live collector disabled. Configure a workspace connection or explicitly enable the local collector."})
+                    region = str(body.get("region", "us-east-1"))
                 if not re.fullmatch(r"^[a-z]{2}(?:-[a-z0-9]+)+-\d$", region):
                     return self._send(400, {"error": "Invalid AWS region format"})
                 from .collector import collect_cloudtrail
-                result = collect_cloudtrail(region, int(body.get("lookback_minutes", 60)), int(body.get("max_pages", 5)))
+                result = collect_cloudtrail(region, int(body.get("lookback_minutes", 60)), int(body.get("max_pages", 5)), session=aws_session)
                 counts = EvidenceStore(_db_path()).ingest(result["events"]) if result["events"] else {"events_inserted": 0, "findings_inserted": 0, "incidents_inserted": 0}
+                if _auth_enabled():
+                    from . import cloud_ops
+                    cloud_ops.sync_alerts(_db_path(), [row["data"] for row in _rows("findings", 500)])
+                    cloud_ops.mark_provider(_db_path(), "aws", status="connected", collected=True)
                 self._audit_mutation("aws.collect", region)
                 return self._send(200, {"ok": True, **{k:v for k,v in result.items() if k != "events"}, "events_returned": len(result["events"]), **counts})
-            if self.path in {"/api/collector/azure/activity-logs", "/api/collector/azure/inventory"}:
+            if self.path == "/api/collector/aws/inventory":
+                aws_session = None
                 if _auth_enabled():
-                    return self._send(403, {"error":"Cloud collection is disabled in shared multi-user mode until provider credentials are tenant-scoped."})
-                if os.environ.get("CLOUDSHIELD_ENABLE_AZURE_COLLECTION") != "1":
-                    return self._send(403, {"error": "Azure collection disabled. Set CLOUDSHIELD_ENABLE_AZURE_COLLECTION=1 and restart the local server."})
-                subscription_id = os.environ.get("AZURE_SUBSCRIPTION_ID", "")
+                    from . import cloud_ops
+                    aws_session, provider_config = cloud_ops.aws_session(_db_path())
+                    regions = body.get("regions") or [provider_config["region"]]
+                else:
+                    if os.environ.get("CLOUDSHIELD_ENABLE_AWS_INVENTORY") != "1":
+                        return self._send(403, {"error":"AWS inventory is disabled"})
+                    regions = body.get("regions") or ["us-east-1"]
+                from .aws_inventory import collect_inventory
+                result = collect_inventory(regions, int(body.get("max_pages", 1)), session=aws_session)
+                if _auth_enabled():
+                    from . import cloud_ops
+                    result["stored_resources"] = cloud_ops.store_inventory(_db_path(), "aws", result.get("resources", []))
+                    cloud_ops.mark_provider(_db_path(), "aws", status="connected", collected=True)
+                self._audit_mutation("aws.inventory.collect", ",".join(regions))
+                return self._send(200, result)
+            if self.path in {"/api/collector/azure/activity-logs", "/api/collector/azure/inventory"}:
+                azure_credential = None
+                if _auth_enabled():
+                    from . import cloud_ops
+                    try:
+                        azure_credential, provider_config = cloud_ops.azure_credential(_db_path())
+                    except ValueError as exc:
+                        return self._send(403, {"error":str(exc)})
+                    subscription_id = provider_config["subscription_id"]
+                else:
+                    if os.environ.get("CLOUDSHIELD_ENABLE_AZURE_COLLECTION") != "1":
+                        return self._send(403, {"error": "Azure collection disabled. Configure a workspace connection or explicitly enable local collection."})
+                    subscription_id = os.environ.get("AZURE_SUBSCRIPTION_ID", "")
                 if not subscription_id:
                     return self._send(400, {"error": "Set AZURE_SUBSCRIPTION_ID in the server environment."})
                 from . import azure_provider
                 if self.path.endswith("/activity-logs"):
-                    result = azure_provider.collect_activity_logs(subscription_id, int(body.get("lookback_hours", 24)), int(body.get("max_pages", 10)), int(body.get("max_records", 2000)))
+                    if azure_credential is not None:
+                        from azure.mgmt.monitor import MonitorManagementClient
+                        monitor = MonitorManagementClient(azure_credential, subscription_id, retry_total=3, retry_backoff_factor=0.8, retry_backoff_max=8)
+                    else:
+                        monitor = None
+                    try:
+                        result = azure_provider.collect_activity_logs(subscription_id, int(body.get("lookback_hours", 24)), int(body.get("max_pages", 10)), int(body.get("max_records", 2000)), monitor_client=monitor)
+                    finally:
+                        if azure_credential is not None:
+                            azure_credential.close()
                     counts = EvidenceStore(_db_path()).ingest(result["events"]) if result["events"] else {"events_inserted":0,"findings_inserted":0,"incidents_inserted":0}
+                    if _auth_enabled():
+                        from . import cloud_ops
+                        cloud_ops.sync_alerts(_db_path(), [row["data"] for row in _rows("findings", 500)])
+                        cloud_ops.mark_provider(_db_path(), "azure", status="connected", collected=True)
                     self._audit_mutation("azure.activity_logs.collect", subscription_id)
                     return self._send(200, {"ok":True, **{k:v for k,v in result.items() if k != "events"}, "events_returned":len(result["events"]), **counts})
-                result = azure_provider.collect_inventory(subscription_id, int(body.get("max_pages", 10)), int(body.get("max_records", 2000)))
+                try:
+                    if azure_credential is not None:
+                        from azure.mgmt.resource import ResourceManagementClient
+                        resource_client = ResourceManagementClient(azure_credential, subscription_id, retry_total=3, retry_backoff_factor=0.8, retry_backoff_max=8)
+                    else:
+                        resource_client = None
+                    result = azure_provider.collect_inventory(subscription_id, int(body.get("max_pages", 10)), int(body.get("max_records", 2000)), resource_client=resource_client)
+                finally:
+                    if azure_credential is not None:
+                        azure_credential.close()
+                if _auth_enabled():
+                    from . import cloud_ops
+                    result["stored_resources"] = cloud_ops.store_inventory(_db_path(), "azure", result.get("resources", []))
+                    cloud_ops.mark_provider(_db_path(), "azure", status="connected", collected=True)
                 self._audit_mutation("azure.inventory.collect", subscription_id)
+                return self._send(200, result)
+            if self.path.startswith("/api/responses/") and self.path.endswith("/decision"):
+                if _auth_enabled() and (not session or session.role != "admin"):
+                    return self._send(403, {"error":"Workspace administrator approval required"})
+                from . import cloud_ops
+                request_id = self.path[len("/api/responses/"):-len("/decision")]
+                result = cloud_ops.decide_response(_db_path(), request_id, actor, body.get("approve"), body.get("note", ""))
+                self._audit_mutation("response.decision", request_id)
                 return self._send(200, result)
             return self._send(404, {"error": "Not found"})
         except PermissionError as exc:

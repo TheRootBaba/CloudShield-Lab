@@ -63,7 +63,7 @@ def role_allowed(role: str, method: str, path: str) -> bool:
         return True
     if method == "POST" and path == "/api/evidence/verify":
         return True
-    if path in {"/api/collector/aws", "/api/collector/azure/activity-logs", "/api/collector/azure/inventory"}:
+    if path.startswith("/api/collector/"):
         return role == "admin"
     return role in {"admin", "responder"}
 

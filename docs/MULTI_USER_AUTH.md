@@ -9,13 +9,13 @@ Set `CLOUDSHIELD_AUTH_MODE=multi_user` to enable browser authentication. The leg
 - Administrators can invite analysts (read-only) and responders (incident workflow, ingestion and simulation).
 - Administrators can create a separate workspace and issue its first administrator a one-time invitation.
 - Administrators can revoke a member; revocation disables the account and deletes its active sessions.
-- Passwords are stored as salted scrypt hashes, never plaintext. The minimum length is 12 characters.
+- The legacy local password provider stores salted scrypt hashes, never plaintext; minimum length is 12 characters. The optional Firebase provider delegates password storage, email verification and password recovery to Firebase Authentication.
 - Login attempts are rate-limited by the TCP peer address; forwarded headers are not trusted because they can be forged unless a verified proxy trust chain is configured. Behind the single Caddy ingress this conservatively applies the limiter to the proxy peer. Eight consecutive failures lock an account for 15 minutes.
 - Browser sessions are random opaque tokens; only SHA-256 token hashes are stored. Sessions expire after 12 hours and are revoked on logout or member disable.
 - Session cookies are HttpOnly, SameSite=Strict; the separate CSRF cookie is checked against a matching request header and its server-side hash.
 - In HTTPS production mode set `CLOUDSHIELD_COOKIE_SECURE=1`; startup refuses a non-loopback bind if secure cookies are not enabled.
 - Every workspace uses a separate SQLite evidence database. The tenant identifier is derived from the authenticated server-side session, never accepted from a request parameter.
-- The central authentication database stores users, tenant memberships, invitation hashes, sessions and authentication audit events.
+- The central authentication database stores users, tenant memberships, invitation hashes, sessions and authentication audit events. Firebase mode also stores a unique Firebase UID per user; role and workspace authorization remain local and server-controlled.
 - Shared AWS/Azure server credentials are deliberately unavailable in multi-user mode. Provider collection endpoints are blocked until per-tenant cloud identities and authorization scopes are implemented.
 
 ## Start locally for the first time
@@ -85,6 +85,14 @@ docker compose --env-file .env.production -f compose.production.yaml logs --tail
 
 The sample domain is a placeholder. Do not start the public ingress until real DNS, firewall rules, private environment values, and a host backup plan are in place.
 
+## Firebase identity provider
+
+Set CLOUDSHIELD_AUTH_PROVIDER=firebase to use Firebase Authentication for browser identity. Firebase email/password registration, verified-email enforcement, password reset and backend ID-token verification are integrated. The Firebase UID maps to the existing CloudShield user record; tenant isolation, role checks, invitation use and session cookies remain enforced by CloudShield. Firebase mode disables the legacy password login and registration routes.
+
+The Firebase Console Authentication product must first be initialized and the Email/Password provider enabled. Configure the public Web app values and read-only Admin SDK secret in the production environment. See [FIREBASE_AUTH.md](FIREBASE_AUTH.md) for the setup procedure, exact environment variables, migration behavior, and current project status.
+
+Existing local accounts are not silently linked by email. A Firebase identity that matches an existing unlinked local email is rejected pending an explicit migration. Advanced MFA and enterprise SAML/OIDC are not part of the Spark-plan integration and remain separate release gates.
+
 ## Workspace-set backup and restore
 
 The single-database backup commands remain available for local use. Multi-user deployments must back up the authentication database and every tenant database as one workspace set.
@@ -113,8 +121,8 @@ Windows operators can use `scripts/backup-production.ps1` and `scripts/recovery-
 
 This is a first-party password/session system, not a complete enterprise identity platform. The following remain unimplemented and are required before a high-assurance public SaaS launch:
 
-- OIDC/SAML SSO, MFA/WebAuthn and verified email.
-- Self-service password reset, password change UI and recovery codes.
+- OIDC/SAML SSO, MFA/WebAuthn, recovery codes and device/session management UI.
+- Existing-account linking/migration workflow and invitation email delivery.
 - Session listing, device management and admin-driven session revocation UI (member disable revokes all that member's sessions).
 - Centralized distributed rate limiting and external audit log export.
 - Per-tenant AWS/Azure identity onboarding, credential rotation and cloud permission review.
