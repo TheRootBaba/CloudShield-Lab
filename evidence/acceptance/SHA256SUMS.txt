@@ -1,0 +1,2 @@
+411c9f78562b61805bc4c66b366e35e71cd509ffe5036fce2a353d7976f11617  evidence/acceptance/local-verification.json
+b305dd11a053462aae6574653b3f2670ca1b589fddb1f6cefc8e2032701fe460  evidence/acceptance/screenshots/08-phase-28-31-acceptance.png

@@ -13,6 +13,8 @@ This checklist separates code-level verification from external production accept
 - [x] Workspace-specific AWS/Azure connection configuration and shared identity ownership reservation.
 - [x] Worker leases, renewal, expiry/reclaim, heartbeats and operational counters.
 
+See [the consolidated Phases 28-31 acceptance plan](PHASES_28_31_ACCEPTANCE_PLAN.md) for detailed steps and required evidence. Run python scripts/capture-release-evidence.py to produce a secret-safe local verification record in evidence/acceptance/. The runner performs local checks only and cannot close external acceptance gates.
+
 ## External production acceptance — open
 
 - [ ] Live AWS sandbox tenant-binding, AssumeRole and bounded collection acceptance.

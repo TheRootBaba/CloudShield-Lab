@@ -11,6 +11,8 @@ CloudShield is a local-first cloud security lab. The roadmap tracks engineering 
 
 ## Remaining acceptance milestones
 
+The consolidated execution checklist, acceptance evidence requirements and local verification runner are maintained in [the Phases 28?31 acceptance package](PHASES_28_31_ACCEPTANCE_PLAN.md). The accompanying [acceptance-gate diagram](diagrams/phase-28-31-acceptance.svg) visualizes the required sequence.
+
 ### Phase 28 — Live provider acceptance
 - Validate AWS AssumeRole and Azure workload identity with dedicated sandbox tenants.
 - Verify tenant isolation, permission scope, bounded collection and failure handling.

@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "recorded_at_utc": "2026-11-20T01:27:16.608663+00:00",
+  "commit": "01d10a97ad8d15b2b89aa2174c10993e423c5024",
+  "platform": "Windows-11-10.0.26300-SP0",
+  "scope": "local software verification only; no live cloud, IdP, SMTP, backup-provider, or production-host acceptance",
+  "checks": [
+    {
+      "name": "python-tests",
+      "command": [
+        "C:\\Python314\\python.exe",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests",
+        "-q"
+      ],
+      "status": "passed",
+      "exit_code": 0,
+      "duration_seconds": 56.17,
+      "summary": "----------------------------------------------------------------------\nRan 188 tests in 55.050s\n\nOK"
+    },
+    {
+      "name": "python-compile",
+      "command": [
+        "C:\\Python314\\python.exe",
+        "-m",
+        "compileall",
+        "-q",
+        "src",
+        "tests"
+      ],
+      "status": "passed",
+      "exit_code": 0,
+      "duration_seconds": 0.18,
+      "summary": ""
+    },
+    {
+      "name": "bandit",
+      "command": [
+        "C:\\Python314\\python.exe",
+        "-m",
+        "bandit",
+        "-q",
+        "-r",
+        "src"
+      ],
+      "status": "passed",
+      "exit_code": 0,
+      "duration_seconds": 1.61,
+      "summary": ""
+    },
+    {
+      "name": "detection-evaluation",
+      "command": [
+        "C:\\Python314\\python.exe",
+        "-m",
+        "cloudshield.cli",
+        "evaluate",
+        "fixtures/detection_evaluation.json"
+      ],
+      "status": "passed",
+      "exit_code": 0,
+      "duration_seconds": 0.26,
+      "summary": "\": 0,\n      \"fp\": 0,\n      \"precision\": 1.0,\n      \"recall\": 1.0,\n      \"specificity\": 1.0,\n      \"tn\": 39,\n      \"tp\": 1\n    },\n    \"CS-NET-001\": {\n      \"f1\": 1.0,\n      \"fn\": 0,\n      \"fp\": 0,\n      \"precision\": 1.0,\n      \"recall\": 1.0,\n      \"specificity\": 1.0,\n      \"tn\": 39,\n      \"tp\": 1\n    },\n    \"CS-NET-002\": {\n      \"f1\": 1.0,\n      \"fn\": 0,\n      \"fp\": 0,\n      \"precision\": 1.0,\n      \"recall\": 1.0,\n      \"specificity\": 1.0,\n      \"tn\": 39,\n      \"tp\": 1\n    },\n    \"CS-RDS-001\": {\n      \"f1\": 1.0,\n      \"fn\": 0,\n      \"fp\": 0,\n      \"precision\": 1.0,\n      \"recall\": 1.0,\n      \"specificity\": 1.0,\n      \"tn\": 39,\n      \"tp\": 1\n    },\n    \"CS-S3-001\": {\n      \"f1\": 1.0,\n      \"fn\": 0,\n      \"fp\": 0,\n      \"precision\": 1.0,\n      \"recall\": 1.0,\n      \"specificity\": 1.0,\n      \"tn\": 39,\n      \"tp\": 1\n    },\n    \"CS-S3-002\": {\n      \"f1\": 1.0,\n      \"fn\": 0,\n      \"fp\": 0,\n      \"precision\": 1.0,\n      \"recall\": 1.0,\n      \"specificity\": 1.0,\n      \"tn\": 39,\n      \"tp\": 1\n    },\n    \"CS-SH-001\": {\n      \"f1\": 1.0,\n      \"fn\": 0,\n      \"fp\": 0,\n      \"precision\": 1.0,\n      \"recall\": 1.0,\n      \"specificity\": 1.0,\n      \"tn\": 39,\n      \"tp\": 1\n    }\n  },\n  \"rule_count\": 19\n}"
+    },
+    {
+      "name": "npm-production-audit",
+      "command": [
+        "npm.cmd",
+        "audit",
+        "--omit=dev",
+        "--audit-level=low"
+      ],
+      "status": "passed",
+      "exit_code": 0,
+      "duration_seconds": 2.53,
+      "summary": "found 0 vulnerabilities"
+    },
+    {
+      "name": "web-production-build",
+      "command": [
+        "npm.cmd",
+        "run",
+        "build"
+      ],
+      "status": "passed",
+      "exit_code": 0,
+      "duration_seconds": 2.93,
+      "summary": "jhP.woff2                   14.98 kB\nweb/assets/inter-cyrillic-wght-normal-DqGufNeO.woff2                 18.74 kB\nweb/assets/inter-greek-wght-normal-CkhJZR-_.woff2                    18.99 kB\nweb/assets/plus-jakarta-sans-latin-ext-wght-normal-DmpS2jIq.woff2    21.72 kB\nweb/assets/inter-cyrillic-ext-wght-normal-BOeWTOD4.woff2             25.96 kB\nweb/assets/plus-jakarta-sans-latin-wght-normal-eXO_dkmS.woff2        27.34 kB\nweb/assets/inter-latin-wght-normal-Dx4kXJAl.woff2                    48.25 kB\nweb/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2                85.06 kB\nweb/assets/index-BPrDqNmV.css                                        45.64 kB \u00e2\u201d\u201a gzip:  12.17 kB\nweb/assets/AccountSecurity-CxaoKOhy.js                                5.97 kB \u00e2\u201d\u201a gzip:   2.24 kB\nweb/assets/CloudOperations-CNpdeQXt.js                               14.66 kB \u00e2\u201d\u201a gzip:   3.99 kB\nweb/assets/esm-BTQ8-z62.js                                          128.18 kB \u00e2\u201d\u201a gzip:  36.52 kB\nweb/assets/index-C9MjRl1G.js                                        454.20 kB \u00e2\u201d\u201a gzip: 144.39 kB\nweb/assets/Overview-BBYDn4ou.js                                     473.90 kB \u00e2\u201d\u201a gzip: 133.06 kB\n\n\u001b[32m\u00e2\u0153\u201c built in 1.59s\u001b[39m"
+    }
+  ],
+  "passed": 6,
+  "failed": 0
+}
