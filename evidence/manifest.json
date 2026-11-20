@@ -1,0 +1,64 @@
+{
+  "project": "CloudShield Lab",
+  "evidence_phase": "Phase 27",
+  "source_recording": "cloudshield-demo.mp4 (original retained locally; not committed)",
+  "public_video": {
+    "path": "evidence/media/cloudshield-demo-redacted.mp4",
+    "fps": 30.0,
+    "frame_count": 3074,
+    "width": 1548,
+    "height": 942,
+    "duration_seconds": 102.47,
+    "size_bytes": 63287839,
+    "sha256": "daf5674f06bc5bf1da1baef739d4017f3cff7a621ddb05bfc9b360c2a709b3f8",
+    "privacy_redactions": [
+      "browser chrome cropped from all frames",
+      "signed-in identity header blurred throughout",
+      "workspace-member identity row blurred in the final workspace-administration segment"
+    ],
+    "audio": "Re-encoded with OpenCV VideoWriter; source audio track is not preserved in this public copy."
+  },
+  "dataset_note": "Screenshots and demo depict the local synthetic lab workspace; they are not live customer cloud telemetry.",
+  "files": [
+    {
+      "path": "evidence/media/cloudshield-demo-redacted.mp4",
+      "size_bytes": 63287839,
+      "sha256": "daf5674f06bc5bf1da1baef739d4017f3cff7a621ddb05bfc9b360c2a709b3f8"
+    },
+    {
+      "path": "evidence/media/01-command-center-overview.png",
+      "size_bytes": 288067,
+      "sha256": "5a377e1e74e4fa8db888d23a9ad1bc73f4a03a74f52f06f7821f1bf7f464abc2"
+    },
+    {
+      "path": "evidence/media/02-evidence-vault.png",
+      "size_bytes": 369737,
+      "sha256": "86556bcb70eb0b553bd25d4fe51942c537e6ed2b58153664408a0375e23039f8"
+    },
+    {
+      "path": "evidence/media/03-alerts-and-response.png",
+      "size_bytes": 393548,
+      "sha256": "92901a445f53ef5cb049aab8c234be1412c14ab8fae41caaa0dba4940d70d1fd"
+    },
+    {
+      "path": "evidence/media/04-guided-response-request.png",
+      "size_bytes": 411545,
+      "sha256": "81affca4ab915a918ef028b5030b8abb1125282ec81982bf5fe6c9eaa916205c"
+    },
+    {
+      "path": "evidence/media/05-tenant-scoped-cloud-connections.png",
+      "size_bytes": 304873,
+      "sha256": "fd0151376c2dec4d3f73ac71ba3538c9063122e33996949443c8e0f7f177e9c5"
+    },
+    {
+      "path": "evidence/screenshots/sign-in-screen.png",
+      "size_bytes": 526842,
+      "sha256": "ab9902b6fb4adadf3e4215e9b8ce7f2d3007a9091bba0307f6d08577060f50be"
+    },
+    {
+      "path": "docs/diagrams/cloudshield-architecture.svg",
+      "size_bytes": 6340,
+      "sha256": "8edded29eeaa1652c2944d67c7a74f1eb518a81540aa6ee7c461847572edd4f9"
+    }
+  ]
+}

@@ -88,4 +88,4 @@ No representative customer telemetry corpus, production false-positive/false-neg
 4. Commission independent penetration and tenant-isolation testing; resolve and retest findings.
 5. Expand detection corpus with independently labelled, representative and privacy-reviewed telemetry; measure precision/recall by provider and rule.
 
-**Release posture: implementation tranche in progress; not production-certified.**
+**Release posture: implementation tranche complete; production certification remains gated by the external acceptance items above.**

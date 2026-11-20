@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="940" viewBox="0 0 1600 940" role="img" aria-labelledby="title desc">
+<title id="title">CloudShield system architecture</title>
+<desc id="desc">Analysts use a React command center through a local or HTTPS edge. The Python API enforces authentication and workspace boundaries. A detection pipeline stores evidence in per-workspace databases. A separate read-only worker collects AWS and Azure telemetry. A shared control database stores identity, leases and response approvals. Cloud response execution is fail-closed because production write adapters are not installed.</desc>
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f5f8fc"/><stop offset="1" stop-color="#eaf1fb"/></linearGradient>
+<linearGradient id="navy" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#102a48"/><stop offset="1" stop-color="#173f68"/></linearGradient>
+<filter id="shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="7" stdDeviation="9" flood-color="#17324f" flood-opacity=".10"/></filter>
+<marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#5d7897"/></marker>
+<style>
+.h{font:700 27px 'Segoe UI',Arial,sans-serif;fill:#102a48}.sub{font:400 17px 'Segoe UI',Arial,sans-serif;fill:#52677f}
+.t{font:700 19px 'Segoe UI',Arial,sans-serif;fill:#17324f}.p{font:400 15px 'Segoe UI',Arial,sans-serif;fill:#52677f}
+.small{font:700 13px 'Segoe UI',Arial,sans-serif;letter-spacing:1.4px;fill:#5b7795}
+.node{fill:#fff;stroke:#d5e0ec;stroke-width:2;rx:18;filter:url(#shadow)}
+.blue{fill:#eaf3ff;stroke:#9dc4f4}.teal{fill:#eaf8f5;stroke:#9dd8ca}.amber{fill:#fff5e8;stroke:#e8c18b}
+.edge{fill:none;stroke:#5d7897;stroke-width:3;marker-end:url(#arrow)}.dash{fill:none;stroke:#a1783c;stroke-width:3;stroke-dasharray:9 8;marker-end:url(#arrow)}
+</style></defs>
+<rect width="1600" height="940" rx="26" fill="url(#bg)"/>
+<text x="70" y="66" class="small">CLOUDSHIELD LAB / SYSTEM DESIGN</text>
+<text x="70" y="112" class="h" style="font-size:38px">Evidence-led cloud security operations</text>
+<text x="70" y="145" class="sub">Tenant-scoped read paths · explainable detection · auditable response controls · local-first deployment</text>
+<rect x="70" y="195" width="260" height="150" class="node blue"/>
+<text x="100" y="235" class="small">ANALYST SURFACE</text><text x="100" y="274" class="t">React command center</text><text x="100" y="305" class="p">Overview · incidents · findings</text><text x="100" y="328" class="p">Evidence · cloud operations</text>
+<rect x="390" y="195" width="270" height="150" class="node"/>
+<text x="420" y="235" class="small">EDGE / SESSION</text><text x="420" y="274" class="t">Local API / Caddy HTTPS</text><text x="420" y="305" class="p">Authentication · CSRF · RBAC</text><text x="420" y="328" class="p">Origin checks · request limits</text>
+<rect x="720" y="175" width="380" height="190" class="node blue"/>
+<text x="750" y="215" class="small">APPLICATION CORE</text><text x="750" y="254" class="t">Python API + tenant router</text><text x="750" y="285" class="p">Workspace from authenticated session</text><text x="750" y="308" class="p">Detection · correlation · evidence APIs</text><text x="750" y="337" class="p">Audited mutations and role checks</text>
+<rect x="1170" y="175" width="350" height="190" class="node teal"/>
+<text x="1200" y="215" class="small">TENANT DATA PLANE</text><text x="1200" y="254" class="t">Workspace evidence DB</text><text x="1200" y="285" class="p">Normalized events · findings</text><text x="1200" y="308" class="p">Incidents · workflow · evidence</text><text x="1200" y="337" class="p">SQLite database per workspace</text>
+<path d="M330 270H390M660 270H720M1100 270H1170" class="edge"/>
+<rect x="390" y="465" width="350" height="175" class="node teal"/>
+<text x="420" y="505" class="small">READ-ONLY COLLECTION</text><text x="420" y="544" class="t">Scheduled worker</text><text x="420" y="575" class="p">Bounded polling · retries · leases</text><text x="420" y="598" class="p">Heartbeat · health · counters</text>
+<rect x="70" y="465" width="260" height="175" class="node blue"/>
+<text x="100" y="505" class="small">CLOUD SOURCES</text><text x="100" y="544" class="t">AWS</text><text x="100" y="570" class="p">CloudTrail management events</text><text x="100" y="608" class="t">Azure</text><text x="100" y="632" class="p">Subscription Activity Logs</text>
+<rect x="800" y="465" width="300" height="175" class="node"/>
+<text x="830" y="505" class="small">SHARED CONTROL PLANE</text><text x="830" y="544" class="t">Auth / control database</text><text x="830" y="575" class="p">Users · workspaces · identity claims</text><text x="830" y="598" class="p">Worker leases · kill switch · approvals</text>
+<rect x="1170" y="465" width="350" height="175" class="node amber"/>
+<text x="1200" y="505" class="small">RESPONSE SAFETY BOUNDARY</text><text x="1200" y="544" class="t">Dry-run → approval quorum</text><text x="1200" y="575" class="p">Plan digest · idempotency · kill switch</text><text x="1200" y="608" class="p">Provider write adapter: NOT INSTALLED</text>
+<path d="M330 550H390M740 550H800" class="edge"/><path d="M1100 550H1170" class="dash"/>
+<path d="M565 465V400H900V365M1350 365V415H1350V465" class="edge"/>
+<rect x="70" y="710" width="1450" height="150" rx="20" fill="url(#navy)"/>
+<text x="110" y="755" class="small" style="fill:#9fc5f2">OPERATING GUARANTEES AND LIMITS</text>
+<text x="110" y="800" style="font:700 21px 'Segoe UI',Arial,sans-serif;fill:#fff">Read-only cloud collection</text><text x="110" y="830" style="font:400 15px 'Segoe UI',Arial,sans-serif;fill:#d4e2f2">No cloud credentials stored by the app · provider identity scoped to a workspace</text>
+<text x="620" y="800" style="font:700 21px 'Segoe UI',Arial,sans-serif;fill:#fff">Evidence is explainable</text><text x="620" y="830" style="font:400 15px 'Segoe UI',Arial,sans-serif;fill:#d4e2f2">Hashes and signatures support integrity checks, not source truth or trusted time</text>
+<text x="1120" y="800" style="font:700 21px 'Segoe UI',Arial,sans-serif;fill:#fff">Response fails closed</text><text x="1120" y="830" style="font:400 15px 'Segoe UI',Arial,sans-serif;fill:#d4e2f2">No production write adapter is enabled</text>
+</svg>

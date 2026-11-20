@@ -1,157 +1,90 @@
 # CloudShield Lab
 
-**A local-first cloud security command center for detection, investigation and evidence-led verification.**
+**An evidence-led cloud security command center for AWS and Azure.**
 
-CloudShield is an engineering lab and portfolio project. It is not a production CSPM/SIEM, not a replacement for GuardDuty or Security Hub, and not a claim of comprehensive cloud threat detection.
+CloudShield is a local-first security engineering lab for collecting selected cloud audit events, explaining detections, investigating related activity and preserving verifiable evidence. It combines a responsive React console with a Python API, tenant-scoped storage and a separate read-only collection worker.
 
-## Current product capabilities
+<p align="center">
+  <img src="docs/diagrams/cloudshield-architecture.svg" alt="CloudShield architecture" width="100%">
+</p>
 
-For the current capability boundary and the Phase 21 delivery record, see [docs/CURRENT_CAPABILITIES.md](docs/CURRENT_CAPABILITIES.md), [docs/CLOUD_OPERATIONS.md](docs/CLOUD_OPERATIONS.md) and [docs/NEXT_PHASES_DELIVERY_REPORT.md](docs/NEXT_PHASES_DELIVERY_REPORT.md).
+## Product tour
 
-## What is implemented
+| Command center | Incident investigation | Alerting and response |
+|---|---|---|
+| ![CloudShield overview](evidence/media/01-command-center-overview.png) | ![Evidence vault](evidence/media/02-evidence-vault.png) | ![Alerts and response](evidence/media/03-alerts-and-response.png) |
 
-- Responsive security command center: overview, incidents, detections, relationship paths, evidence vault, data sources and rule library.
-- Local HTTP API backed by the detection pipeline and SQLite evidence store.
-- Optional browser authentication with scrypt password hashes, 12-hour revocable sessions, CSRF protection, role-based authorization, workspace invitations and separate SQLite evidence databases per workspace.
-- CloudTrail and AWS Security Hub event normalization, plus Azure Activity Log normalization.
-- Explainable detections for selected IAM, S3, EC2/network, CloudTrail, KMS, Lambda and RDS event patterns.
-- Offline synthetic scenarios, including a four-step multi-stage sequence. Synthetic source provenance is retained.
-- Incident grouping by actor/account and time window, with a graph view of observed time/resource relationships. Graph edges are hypotheses, not proof of causation.
-- SHA-256 evidence fingerprints for canonical stored event and incident payloads.
-- Optional, explicit, read-only AWS CloudTrail LookupEvents collection. Disabled by default.
-- Detection validation suite with curated MITRE ATT&CK technique references, positive/negative/adversarial cases and mapping-integrity checks; real-world detection accuracy is not measured.
-- Event-derived AWS asset inventory and relationship graph, including observed actors, accounts, regions, timestamps, event counts and finding associations; this is not authoritative cloud-resource enumeration.
-- White-first responsive React command center with analytics, detection library, observed assets and relationship views.
-- A labelled detection evaluation harness with per-rule metrics; fixture metrics are not production accuracy claims.
-- Optional Ed25519 signatures for portable incident evidence bundles, using encrypted private keys and detached signatures.
-- Optional bounded read-only AWS inventory for selected EC2, security-group, S3 bucket-name and IAM metadata; disabled unless explicitly enabled.
-- Tenant-scoped AWS STS AssumeRole and Azure managed/workload identity connection registry; global uniqueness prevents reusing one provider identity across workspaces.
-- Separate scheduled collector worker with bounded CloudTrail/Activity Log polling, SDK retry/backoff, six-hour bounded inventory refresh and worker heartbeat.
-- Workspace-persisted live inventory, deduplicated HIGH/CRITICAL alerts and optional STARTTLS SMTP notifications to active admins/responders.
-- Guided finding-specific containment recommendations, independent administrator approval and security audit records; cloud write execution deliberately fails closed.
-- Firebase TOTP enrollment and second-factor challenge UI plus configurable Firebase OIDC/SAML sign-in flows.
-- Opt-in offsite S3 backup Terraform root with SSE-KMS, Object Lock COMPLIANCE retention, dedicated uploader role and isolated restore-drill scripts.
+More product evidence: [guided response request](evidence/media/04-guided-response-request.png) | [tenant-scoped cloud connections](evidence/media/05-tenant-scoped-cloud-connections.png) | [sign-in screen](evidence/screenshots/sign-in-screen.png).
 
-## Quick start (Windows PowerShell)
+## What it does
 
-1. Open PowerShell in the repository directory.
-2. Install the project: **python -m pip install -e .**
-3. Run tests: **python -m unittest discover -s tests -v**
-4. Start the app: **python -m cloudshield.api**
-5. Open **http://127.0.0.1:8765**.
+- **Detect:** normalize selected AWS CloudTrail, AWS Security Hub and Azure Activity Log event shapes; evaluate explainable rules with severity and ATT&CK references.
+- **Investigate:** group related findings, explore evidence-backed temporal/resource relationships, manage incident workflow and analyst notes.
+- **Preserve evidence:** canonical SHA-256 fingerprints, portable incident bundles and optional detached Ed25519 signatures.
+- **Operate by workspace:** isolate tenant evidence stores and scope AWS AssumeRole / Azure workload identity connections to a workspace.
+- **Collect safely:** bounded scheduled read-only polling, retry limits, inventory refresh and worker health signals.
+- **Control response:** action-specific dry runs, blast-radius reporting, approval quorum, idempotency and a default-on kill switch. Production cloud-write adapters are not installed; execution remains fail-closed.
 
-The first run is intentionally empty. Select **Run simulation** to create clearly marked synthetic lab data, or import your own CloudTrail / Security Hub JSON.
+## Demo
 
-CLI examples:
-- **cloudshield analyze fixtures/sample_cloudtrail.json**
-- **cloudshield simulate multi-stage-compromise --output artifacts/multi-stage.json**
-- **cloudshield store artifacts/multi-stage.json**
-- **cloudshield evaluate fixtures/detection_evaluation.json**
-- **cloudshield timeline**
+[Watch the redacted CloudShield walkthrough](evidence/media/cloudshield-demo-redacted.mp4) (102-second silent copy). The public copy removes browser chrome and obscures the signed-in identity and workspace-member details; source audio was omitted because it was not separately reviewed for spoken personal or confidential information. The original recording remains on the author's device.
 
-## Import formats
+## Quick start
 
-CloudTrail event arrays, CloudTrail Records documents, Security Hub Findings exports, Azure Activity Log exports, and EventBridge-style objects containing a detail object are supported. Use **Import events** in the UI. The request body is limited to 2 MiB. Evidence is stored in artifacts/evidence.sqlite3 by default. Set CLOUDSHIELD_DB to choose another path.
-
-## Live AWS and Azure connections
-
-Live provider access is configured per workspace from **Data sources**. AWS uses a unique ExternalId and STS AssumeRole; Azure uses a workspace-specific managed identity or workload identity federation. Credentials are never entered into CloudShield. An administrator must configure, test and then explicitly enable each connection. The production Compose profile runs a separate bounded collector worker. Scheduled collection is not a streaming SIEM and provider inventory is intentionally partial. See [docs/CLOUD_OPERATIONS.md](docs/CLOUD_OPERATIONS.md) for exact IAM actions, Azure role permissions, retry bounds, scheduler limits and the operational setup.
-
-Real provider access requires a dedicated AWS/Azure test account, correctly configured workload identity, least-privilege permissions and explicit cost approval. This repository has not been connected to a real customer cloud account as part of automated validation.
-
-## Detection and investigation boundaries
-
-See docs/DETECTION_COVERAGE.md for rule IDs and supported patterns.
-
-- Coverage is selected event-pattern detection, not comprehensive threat detection. Unsupported services, event shapes, data-plane activity and contextual signals can be missed.
-- Synthetic scenarios generate fake CloudTrail-shaped JSON only. They do not execute attacks or call AWS.
-- Incident grouping remains an actor/account/time-window heuristic. The relationship graph makes evidence-backed temporal and resource correlations visible, but does not infer verified causality or a complete attack path. Sequence hypotheses are bounded to 24 hours where timestamps are available; see docs/ATTACK_PATH_CORRELATION.md.
-- The AWS collector is optional and reads CloudTrail management event history only. The Azure adapter reads subscription Activity Logs (control-plane) and ARM resource metadata. Neither is a streaming pipeline, full provider inventory, organization-wide deployment, or guaranteed complete audit feed.
-- SHA-256 fingerprints detect content changes relative to a known digest; they are not digital signatures, trusted timestamps, or proof of source authenticity.
-- Analyst workflow per incident: status transitions, priority, assignee, and append-only activity notes.
-- Portable incident evidence bundles containing incident/event/finding digests, workflow history and a bundle manifest; verifier checks hash integrity and timeline references.
-- Legacy loopback mode remains single-user. Optional multi-user mode partitions each workspace into a separate SQLite evidence database and derives tenant scope from the authenticated server-side session. Workflow actors are authenticated in multi-user mode; local-mode actor names remain user-supplied. Evidence bundle hashes are tamper-evident only relative to a trusted copy of the manifest. Phase 12 adds optional detached Ed25519 signatures when a trusted public key is supplied independently; signatures do not establish source truth or trusted time.
-
-## Security and operational defaults
-
-The server binds to 127.0.0.1 and rejects non-loopback bind addresses at startup. Uploaded JSON is treated as untrusted input; the API enforces a 2 MiB JSON-object body limit, content-type/length checks, cross-origin Origin rejection, request limits keyed to the TCP peer (forwarded headers are not trusted) and restrictive browser security headers. Mutating API operations are recorded in a local SQLite security audit table.
-
-Legacy local mode supports optional API role tokens. For browser accounts and tenant isolation, set CLOUDSHIELD_AUTH_MODE=multi_user; the first account becomes the initial administrator and subsequent users join via single-use invitations. The local password provider uses scrypt hashes and 12-hour HttpOnly/SameSite sessions with CSRF validation. The optional Firebase provider adds verified-email sign-in, password-reset email, server-side ID-token/revocation verification, and a unique Firebase UID mapping while keeping roles and tenant membership in CloudShield SQLite. When Firebase mode is selected, legacy password login/registration is disabled. Administrators can invite analysts/responders, create separate workspaces and revoke member access. See docs/MULTI_USER_AUTH.md, docs/FIREBASE_AUTH.md and the current validation report in docs/FIREBASE_AUTH_REPORT.md. The production Compose profile enables multi-user auth and Firebase provider by default, mounts the Admin SDK key as a read-only Compose secret, and requires a unique CLOUDSHIELD_BOOTSTRAP_TOKEN (at least 32 characters) to protect first-admin registration.
-
-**Do not expose the Python listener directly to a LAN or public network.** The production profile places Caddy HTTPS ingress in front of the private API and requires multi-user auth. It is a single-host deployment template, not an HA SaaS platform. Firebase email verification and password-reset flows are implemented but require Authentication initialization and provider enablement in the Firebase Console. Firebase TOTP and OIDC/SAML sign-in flows are implemented, but Firebase Identity Platform policy/provider configuration remains an operator task. Centralized metrics/on-call, external managed secrets/audit, independent penetration testing, offsite restore drills and live cloud validation remain release gates. Provider collectors use workspace-scoped identities; do not supply shared static cloud credentials.
-
-No cloud collection happens until a workspace administrator configures, tests and explicitly enables a read-only provider connection. Keep all connections disabled for the offline $0 setup. Controlled response dry-runs, approval quorum, idempotency and a default-on kill switch are implemented, but no production provider write adapter is installed; cloud remediation remains disabled. Terraform infrastructure roots remain separate and opt-in.
-
-## Phases 9-10: incident workflow and evidence bundles
-
-- Use the incident drawer to set workflow status (`new`, `acknowledged`, `in_progress`, `resolved`, `reopened`), priority, assignee and add analyst notes.
-- Workflow changes and notes are retained in a local activity history.
-- Export a portable JSON bundle from an incident and automatically verify it before download. The Evidence Vault can verify a previously exported bundle.
-- API: `GET /api/incidents/{id}/workflow`, `PATCH /api/incidents/{id}/workflow`, `POST /api/incidents/{id}/notes`, `GET /api/incidents/{id}/export`, and `POST /api/evidence/verify`.
-- Integrity checks validate incident/event/finding digests, manifest digest and event references. This is not cryptographic authenticity or trusted chain of custody.
-
-See docs/PHASE_9_INCIDENT_RESPONSE.md and docs/PHASE_10_EVIDENCE_BUNDLES.md for implementation details and boundaries.
-
-## Detection evaluation (Phase 11)
-
-Run **cloudshield evaluate fixtures/detection_evaluation.json** to calculate per-rule and micro-averaged precision, recall, specificity and F1. The included 40-case labelled corpus currently covers 19 AWS/Azure rules. These are deterministic fixture results only, not estimates of production false-positive or false-negative rates. See docs/PHASE_11_DETECTION_EVALUATION.md and docs/DETECTION_COVERAGE.md.
-
-## Signed evidence bundles (Phase 12)
-
-Install the optional signing dependency with **python -m pip install -e ".[signing]"**. Generate an encrypted Ed25519 key pair with **cloudshield keygen --private-key artifacts/cloudshield-signing-private.pem --public-key artifacts/cloudshield-signing-public.pem**. Then sign and verify a valid exported bundle using **cloudshield sign-bundle** and **cloudshield verify-signature**. The public key must be trusted independently; a signature does not prove the source telemetry is truthful or provide trusted timestamping. See docs/PHASE_12_SIGNED_EVIDENCE.md.
-
-## Optional read-only AWS inventory (Phase 13)
-
-Install boto3 with **python -m pip install -e ".[aws]"**, then explicitly set **$env:CLOUDSHIELD_ENABLE_AWS_INVENTORY="1"** before running **cloudshield aws-inventory --regions us-east-1 --max-pages 1 --output artifacts/aws-inventory.json**. The command is disabled by default, accepts only 1–5 explicit regions, and caps pagination. It lists selected resource metadata only; it is not complete organization-wide discovery. Tests use mocked clients and do not contact AWS. Review docs/PHASE_13_AWS_INVENTORY.md and approve the sandbox/cost boundary before a live run.
-
-## Phase 14 offline hardening
-
-Incident graph correlations now require explicit evidence, avoid ambiguous duplicate event IDs, cap valid timestamp gaps at 24 hours and mark sequence edges as non-causal. Optional multi-user browser auth and tenant-isolated workspaces are documented in docs/MULTI_USER_AUTH.md; enterprise identity and independent assurance remain external gates. See docs/ATTACK_PATH_CORRELATION.md and docs/SECURITY_THREAT_MODEL.md.
-
-## Terraform safety
-
-Examples remain under terraform/secure and terraform/vulnerable. Both default to no resource creation and require explicit opt-in. The vulnerable root intentionally creates insecure training fixtures. Never apply it to a production or shared account. Review cost, region, IAM permissions and teardown before any AWS apply.
-
-## Tests
-
-Run **python -m compileall -q src tests** and **python -m unittest discover -s tests -v**. For the React command center, run **npm ci** and **npm run build**. The CI authentication/recovery coverage gate is **python -m coverage run --source=cloudshield.auth,cloudshield.recovery -m unittest discover -s tests -v** followed by **python -m coverage report --fail-under=90**.
-
-The suite covers normalization, selected detections, simulation, detection evaluation, signed evidence, mocked AWS inventory, incident grouping, graph semantics, API integration, SQLite persistence and Terraform safety fixtures.
-
-MIT License.
-
-## Offline completion and handoff
-
-See docs/OFFLINE_COMPLETION.md for the offline verification snapshot. Phase 15–20 delivery and provider expansion are documented in docs/PHASES_15_20_REPORT.md and docs/PROVIDER_EXPANSION_REPORT.md. Phase 21 cloud operations and Phases 23–26 implementation/acceptance status are documented in docs/NEXT_PHASES_DELIVERY_REPORT.md and docs/PHASES_23_26_IMPLEMENTATION_REPORT.md. Browser authentication and tenant isolation are described in docs/MULTI_USER_AUTH.md; production ingress and workspace recovery are in docs/DEPLOYMENT_OPERATIONS.md and docs/FINALIZATION_RUNBOOK.md.
-
-## Containerized local run
-
-Docker Compose is provided for a local-only deployment. It runs as a non-root user, uses a read-only container filesystem with a persistent data volume, drops Linux capabilities, and publishes only `127.0.0.1:8765` on the host. Build and start with `docker compose up --build -d`, then open `http://127.0.0.1:8765`. Stop with `docker compose down`; preserve the named volume unless intentionally deleting local evidence. Do not change the local profile port binding to 0.0.0.0. The separate production profile is the only supported non-loopback template and requires HTTPS plus multi-user auth; see docs/DEPLOYMENT_OPERATIONS.md.
-
-## SQLite backup and restore
-
-Create a consistent online backup and SHA-256 manifest with `cloudshield backup --database artifacts/evidence.sqlite3 --output artifacts/backups/evidence-2026-11-19.sqlite3`. Verify it with `cloudshield verify-backup artifacts/backups/evidence-2026-11-19.sqlite3`; restore only to a new path with `cloudshield restore-backup artifacts/backups/evidence-2026-11-19.sqlite3 --destination artifacts/restore/evidence.sqlite3`. Verification checks the manifest digest and SQLite integrity. Store/sign the manifest independently for protection against an attacker who can modify both files.
-
-
-## Multi-user browser sign-in and workspace isolation
-
-For a local multi-user trial, set CLOUDSHIELD_AUTH_MODE=multi_user before starting the API. The first registered account becomes the administrator. Use the Team control to invite users or create a separate workspace. Each workspace has its own SQLite database; the server selects it from the signed-in session. See docs/MULTI_USER_AUTH.md for configuration, roles, invitation and security limitations.
-
-## Local Windows testing of the production profile (loopback-only)
-
-For a local Firebase test using `.env.production.local` and the localhost certificate, always use `scripts/local-production.ps1`. It creates a private Compose override outside the repository and binds Caddy only to `127.0.0.1:8088` and `127.0.0.1:8443`; do not run the production Compose file directly for this local setup because its default 80/443 bindings are intended for a real public deployment.
+### Local development
 
 ~~~powershell
-.\\scripts\\local-production.ps1 up --build -d
-.\\scripts\\local-production.ps1 ps
+python -m pip install -e .
+python -m unittest discover -s tests -v
+python -m cloudshield.api
 ~~~
 
-Open `https://localhost:8443`. To view logs use `.\\scripts\\local-production.ps1 logs --tail 100 cloudshield`.
+Open http://127.0.0.1:8765. The offline workspace starts without cloud collection. Use **Run simulation** for explicitly synthetic lab events or import a supported CloudTrail / Security Hub / Azure Activity Log export.
 
-## Production HTTPS deployment
+### Local production profile (Windows)
 
-compose.production.yaml runs the application on an internal-only Docker network behind Caddy; only Caddy is attached to the public edge network. Copy .env.production.example to .env.production, configure a real DNS name and TLS contact, generate a unique bootstrap key with `python -c "import secrets; print(secrets.token_urlsafe(48))"`, and store it in the private environment file. Validate/deploy with `docker compose --env-file .env.production -f compose.production.yaml config --quiet` and `docker compose --env-file .env.production -f compose.production.yaml up --build -d`. On Windows, `scripts/deploy-production.ps1` performs config/build/start plus internal and external HTTPS health checks. The app API port is not published. Do not deploy with the sample domain or without DNS, inbound 80/443, host firewall, secret-file ACLs, monitoring and independent security review. Production deployment and recovery procedures are in docs/DEPLOYMENT_OPERATIONS.md.
+~~~powershell
+.\scripts\local-production.ps1 up --build -d
+.\scripts\local-production.ps1 ps
+~~~
 
-## Multi-workspace backup and recovery
+Open https://localhost:8443. Use scripts/local-production.ps1 for the loopback-only profile; do not run the production Compose file directly on a Windows workstation.
 
-Back up the authentication database and all tenant databases together with cloudshield backup-workspaces --auth-database artifacts/auth.sqlite3 --tenant-directory artifacts/tenants --output artifacts/backups/cloudshield-workspaces.zip. Verify with cloudshield verify-workspaces and restore to a new directory with cloudshield restore-workspaces. Quiesce writes for a consistent snapshot and store the archive plus manifest off-host. Windows Docker operators can use `scripts/backup-production.ps1` (stops the app briefly for a consistent auth+tenant snapshot and restarts it) and `scripts/recovery-drill.ps1` (verifies/restores to an isolated new directory). `scripts/deploy-production.ps1` performs a guarded deployment and HTTPS health check.
+## Security and scope
+
+CloudShield is a security lab and portfolio projectâ€”not a certified production CSPM/SIEM, not a replacement for GuardDuty or Security Hub, and not comprehensive cloud threat detection. Provider collection is selected, bounded control-plane telemetry; it is not a streaming SIEM or authoritative full inventory. Fixture metrics are not production accuracy estimates.
+
+Cloud credentials are not stored by the application. Cloud writes are not available because reviewed production response adapters are not installed. SQLite worker leases support a single host/shared-volume deployment, not multi-region coordination. Live provider acceptance, centralized on-call monitoring, off-host restore drills and independent penetration/tenant-isolation assessments remain release gates.
+
+## Verification
+
+~~~powershell
+python -m compileall -q src tests
+python -m unittest discover -s tests -v
+python -m cloudshield.cli evaluate fixtures/detection_evaluation.json
+npm ci
+npm run build
+npm audit --omit=dev --audit-level=low
+~~~
+
+See CI for the authoritative branch-specific workflow result. A passing automated suite does not certify external identity providers, real AWS/Azure access, cloud remediation, production detection quality or disaster recovery.
+
+## Documentation
+
+Start with the [documentation index](docs/INDEX.md). Key references:
+
+- [Architecture and data flows](docs/ARCHITECTURE.md)
+- [Current capabilities and boundaries](docs/CURRENT_CAPABILITIES.md)
+- [Cloud operations and provider permissions](docs/CLOUD_OPERATIONS.md)
+- [Deployment, backup and recovery](docs/DEPLOYMENT_OPERATIONS.md)
+- [Security threat model](docs/SECURITY_THREAT_MODEL.md)
+- [Detection coverage](docs/DETECTION_COVERAGE.md)
+- [Detection evaluation methodology](docs/DETECTION_EVALUATION.md)
+- [Evidence custody and signatures](docs/EVIDENCE_CUSTODY.md)
+- [Phases 23-26 implementation and acceptance](docs/PHASES_23_26_IMPLEMENTATION_REPORT.md)
+- [Phase 27 documentation and evidence record](docs/PHASE_27_DOCUMENTATION_AND_EVIDENCE.md)
+- [Evidence inventory and provenance](evidence/README.md)
+
+## License
+
+MIT. See [LICENSE](LICENSE).
