@@ -21,6 +21,10 @@ RULE_TECHNIQUES = {
     "CS-SH-001": [],
     "CS-AZ-IAM-001": [{"id": "T1098.003", "name": "Additional Cloud Roles", "url": "https://attack.mitre.org/techniques/T1098/003/"}],
     "CS-AZ-AUDIT-001": [{"id": "T1562.008", "name": "Disable Cloud Logs", "url": "https://attack.mitre.org/techniques/T1562/008/"}],
+    "CS-AZ-NET-001": [],
+    "CS-AZ-STO-001": [],
+    "CS-AZ-GOV-001": [],
+    "CS-AZ-KV-001": [],
 }
 
 def techniques_for_rule(rule_id: str) -> list[dict]:

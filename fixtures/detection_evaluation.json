@@ -508,6 +508,104 @@
         "recipientAccountId": "12345678-1234-4234-8234-123456789abc"
       },
       "expected_rule_ids": []
+    },
+    {
+      "id": "positive-azure-public-rdp",
+      "label": "positive",
+      "event": {
+        "eventSource": "azure.activitylogs",
+        "eventName": "Microsoft.Network/networkSecurityGroups/securityRules/write",
+        "requestParameters": {"properties": {"sourceAddressPrefix": "Internet", "destinationPortRange": "3389"}}
+      },
+      "expected_rule_ids": ["CS-AZ-NET-001"]
+    },
+    {
+      "id": "negative-azure-private-rdp",
+      "label": "negative",
+      "event": {
+        "eventSource": "azure.activitylogs",
+        "eventName": "Microsoft.Network/networkSecurityGroups/securityRules/write",
+        "requestParameters": {"properties": {"sourceAddressPrefix": "10.1.0.0/16", "destinationPortRange": "3389"}}
+      },
+      "expected_rule_ids": []
+    },
+    {
+      "id": "positive-azure-storage-public",
+      "label": "positive",
+      "event": {
+        "eventSource": "azure.activitylogs",
+        "eventName": "Microsoft.Storage/storageAccounts/write",
+        "requestParameters": {"properties": {"allowBlobPublicAccess": true}}
+      },
+      "expected_rule_ids": ["CS-AZ-STO-001"]
+    },
+    {
+      "id": "negative-azure-storage-private",
+      "label": "negative",
+      "event": {
+        "eventSource": "azure.activitylogs",
+        "eventName": "Microsoft.Storage/storageAccounts/write",
+        "requestParameters": {"properties": {"allowBlobPublicAccess": false}}
+      },
+      "expected_rule_ids": []
+    },
+    {
+      "id": "positive-azure-policy-delete",
+      "label": "positive",
+      "event": {
+        "eventSource": "azure.activitylogs",
+        "eventName": "Microsoft.Authorization/policyAssignments/delete"
+      },
+      "expected_rule_ids": ["CS-AZ-GOV-001"]
+    },
+    {
+      "id": "negative-azure-policy-write",
+      "label": "negative",
+      "event": {
+        "eventSource": "azure.activitylogs",
+        "eventName": "Microsoft.Authorization/policyAssignments/write"
+      },
+      "expected_rule_ids": []
+    },
+    {
+      "id": "positive-azure-keyvault-allow",
+      "label": "positive",
+      "event": {
+        "eventSource": "azure.activitylogs",
+        "eventName": "Microsoft.KeyVault/vaults/write",
+        "requestParameters": {"properties": {"networkAcls": {"defaultAction": "Allow"}}}
+      },
+      "expected_rule_ids": ["CS-AZ-KV-001"]
+    },
+    {
+      "id": "negative-azure-keyvault-deny",
+      "label": "negative",
+      "event": {
+        "eventSource": "azure.activitylogs",
+        "eventName": "Microsoft.KeyVault/vaults/write",
+        "requestParameters": {"properties": {"networkAcls": {"defaultAction": "Deny"}}}
+      },
+      "expected_rule_ids": []
+    },
+    {
+      "id": "positive-azure-nsg-prefix-list",
+      "label": "positive",
+      "event": {
+        "eventSource": "azure.activitylogs",
+        "eventName": "Microsoft.Network/networkSecurityGroups/securityRules/write",
+        "requestParameters": {"properties": {"sourceAddressPrefixes": ["10.0.0.0/24", "Internet"], "destinationPortRanges": ["443", "22"]}}
+      },
+      "expected_rule_ids": ["CS-AZ-NET-001"]
+    },
+    {
+      "id": "negative-azure-nsg-private-lists",
+      "label": "negative",
+      "event": {
+        "eventSource": "azure.activitylogs",
+        "eventName": "Microsoft.Network/networkSecurityGroups/securityRules/write",
+        "requestParameters": {"properties": {"sourceAddressPrefixes": ["10.0.0.0/24"], "destinationPortRanges": ["22"]}}
+      },
+      "expected_rule_ids": []
     }
   ]
 }

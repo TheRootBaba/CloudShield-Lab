@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class DetectionEvaluationTests(unittest.TestCase):
     def test_curated_corpus_has_no_regressions(self):
         result = evaluate_file(ROOT / "fixtures" / "detection_evaluation.json")
-        self.assertEqual(30, result["case_count"])
+        self.assertEqual(40, result["case_count"])
         self.assertEqual(0, result["case_fail_count"])
         self.assertEqual(result["case_count"], result["case_pass_count"])
         self.assertEqual(1.0, result["micro_average"]["precision"])

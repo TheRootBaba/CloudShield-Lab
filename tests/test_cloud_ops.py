@@ -102,7 +102,7 @@ class CloudOpsTests(unittest.TestCase):
             cloud_ops.set_enabled(self.db, "gcp", True)
 
     def test_alerts_are_high_severity_only_and_deduplicated(self):
-        finding = {"event_id": "evt-1", "rule_id": "iam.suspicious", "severity": "HIGH",
+        finding = {"event_id": "evt-1", "rule_id": "CS-IAM-002", "severity": "HIGH",
                    "title": "Suspicious IAM action", "rationale": "Review the actor."}
         low = {"event_id": "evt-2", "rule_id": "low", "severity": "LOW"}
         self.assertEqual(cloud_ops.sync_alerts(self.db, [finding, low]), 1)
@@ -114,15 +114,16 @@ class CloudOpsTests(unittest.TestCase):
         self.assertEqual(ack["acknowledged_by"], "responder-1")
 
     def test_response_requires_existing_finding_and_independent_approval(self):
-        finding = {"event_id": "evt-1", "rule_id": "iam.suspicious", "severity": "HIGH"}
-        finding_id = hashlib.sha256(json.dumps(["evt-1", "iam.suspicious"], sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        finding = {"event_id": "evt-1", "rule_id": "CS-IAM-002", "severity": "HIGH"}
+        finding_id = hashlib.sha256(json.dumps(["evt-1", "CS-IAM-002"], sort_keys=True, separators=(",", ":")).encode()).hexdigest()
         with sqlite3_connect(self.db) as db:
             db.execute("CREATE TABLE findings (finding_id TEXT PRIMARY KEY,event_id TEXT,rule_id TEXT,payload_json TEXT,payload_sha256 TEXT)")
-            db.execute("INSERT INTO findings VALUES(?,?,?,?,?)", (finding_id, "evt-1", "iam.suspicious", json.dumps(finding), "digest"))
+            db.execute("INSERT INTO findings VALUES(?,?,?,?,?)", (finding_id, "evt-1", "CS-IAM-002", json.dumps(finding), "digest"))
         request = cloud_ops.request_response(self.db, finding_id, "review_and_revoke_suspicious_credentials",
                                              "Confirm key owner and preserve evidence.", "requester")
-        with self.assertRaises(PermissionError):
-            cloud_ops.decide_response(self.db, request["request_id"], "requester", True)
+        for requester_variant in ("requester", " REQUESTER "):
+            with self.assertRaises(PermissionError):
+                cloud_ops.decide_response(self.db, request["request_id"], requester_variant, True)
         approved = cloud_ops.decide_response(self.db, request["request_id"], "independent-admin", True, "Reviewed")
         self.assertEqual(approved["status"], "approved")
         with self.assertRaises(ValueError):
@@ -183,8 +184,14 @@ class CloudOpsTests(unittest.TestCase):
     def test_response_recommendations_match_finding_type(self):
         s3 = cloud_ops.recommendations({"rule_id":"s3.public_bucket_policy"})
         network = cloud_ops.recommendations({"rule_id":"ec2.public_admin_ingress"})
+        credential = cloud_ops.recommendations({"rule_id":"CS-IAM-002"})
+        policy_change = cloud_ops.recommendations({"rule_id":"CS-IAM-001"})
+        azure = cloud_ops.recommendations({"rule_id":"CS-AZ-NET-001"})
         self.assertEqual([item["action"] for item in s3], ["remove_unintended_public_access"])
         self.assertEqual([item["action"] for item in network], ["restrict_exposed_network_rule"])
+        self.assertEqual([item["action"] for item in credential], ["review_and_revoke_suspicious_credentials"])
+        self.assertEqual(policy_change, [])
+        self.assertEqual(azure, [])
 
     def test_response_execution_fails_closed(self):
         with self.assertRaises(RuntimeError):
