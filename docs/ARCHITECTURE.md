@@ -1,62 +1,97 @@
-# Architecture
+# Architecture and trust boundaries
 
-## Runtime
+CloudShield is a local-first application with a deliberately separated control plane, tenant evidence plane and cloud collection worker. The design prioritizes explicit scope, explainable findings and auditable state changes over broad collection or automatic remediation.
 
-- cloudshield.api serves the Vite-built React command center from web/ and the local JSON API using Python standard-library HTTP components.
-- cli.py exposes analysis, simulation, storage, evaluation, evidence signing and opt-in AWS inventory commands.
-- App.jsx and styles.css implement the responsive React interface; Vite builds hashed JavaScript, CSS and font assets into web/.
-- assets.py derives an observed-resource inventory and contextual relationship graph from stored event and finding evidence.
-- attack_techniques.py attaches conservative, curated MITRE ATT&CK references to selected detection rules; mappings are coverage hypotheses, not confirmation of technique execution.
-- evaluation.py calculates fixture-scoped confusion counts and per-rule detection metrics.
-- evidence_signing.py creates and verifies detached Ed25519 signatures for valid Phase 10 bundles.
-- aws_inventory.py provides an explicitly enabled, bounded, read-only inventory adapter; it does not claim complete AWS account discovery.
-- pipeline.py normalizes events, applies explainable detection rules and groups findings into incidents.
-- storage.py persists normalized events, findings and incidents transactionally in SQLite.
-- graph.py creates a relationship graph with finding/event, actor, account and resource nodes. Observed resource references and temporal adjacency edges are labelled with their evidence.
-- collector.py is an optional boto3 adapter for one-shot read-only CloudTrail LookupEvents requests.
+![CloudShield architecture](diagrams/cloudshield-architecture.svg)
 
-## API
+## Runtime components
 
-| Method | Endpoint | Purpose |
+| Component | Responsibility | Trust boundary |
 |---|---|---|
-| GET | /api/health | Service and collector capability status |
-| GET | /api/dashboard | Stored evidence summary and recent records |
-| GET | /api/analytics?window=24h | Bounded event/finding time-series aggregates and top rules |
-| GET | /api/assets | Event-derived observed resource inventory |
-| GET | /api/asset-graph | Resource relationship graph derived from observed evidence |
-| GET | /api/incidents | Incident list |
-| GET | /api/incidents/{id} | Incident, digest and relationship graph |
-| GET | /api/findings | Stored findings |
-| GET | /api/events | Normalized stored events and evidence fingerprints |
-| GET | /api/evidence/{event_id} | Event and associated finding digests |
-| GET | /api/rules | Rule inventory with curated ATT&CK references |
-| GET | /api/incidents/{id}/workflow | Incident workflow state and activity history |
-| GET | /api/incidents/{id}/export | Portable incident evidence bundle |
-| GET | /api/collector/status | AWS SDK and local credential-source status |
-| POST | /api/ingest | Analyze and persist supplied JSON |
-| POST | /api/simulate | Generate and persist explicitly synthetic scenario telemetry |
-| POST | /api/incidents/{id}/notes | Append an analyst note to local workflow history |
-| POST | /api/evidence/verify | Verify a portable evidence bundle's hashes and references |
-| PATCH | /api/incidents/{id}/workflow | Update validated workflow state, priority or assignee |
-| POST | /api/collector/aws | Explicit one-shot CloudTrail lookup; requires opt-in environment flag |
+| React command center | Analyst UI for overview, incidents, detections, evidence, data sources and response requests | Browser is untrusted; API authorization is authoritative |
+| Caddy edge (production profile) | HTTPS ingress and reverse proxy to the private API | Only the edge is host-published in the production Compose profile |
+| Python API | Authentication, authorization, tenant routing, ingestion, investigation and operations endpoints | Derives workspace from the authenticated server-side session |
+| Detection pipeline | Normalize selected provider event shapes, evaluate deterministic rules and correlate findings | Input events and provider payloads are untrusted |
+| Tenant evidence database | Persist normalized events, findings, incidents, workflow and evidence metadata | Separate SQLite database per workspace |
+| Shared auth/control database | Users, workspaces, provider identity claims, worker leases, response approvals and kill-switch state | Shared control plane; access restricted to server/operator roles |
+| Collector worker | Scheduled bounded read-only AWS/Azure collection and inventory refresh | Uses the configured workspace identity; no static cloud secret stored in CloudShield |
+| Response-control module | Dry-run plans, impact analysis, approvals, idempotency and execution guardrails | Fails closed without an installed reviewed provider adapter |
 
-The default API binds to loopback and preserves a single-user local mode. Optional multi-user mode adds browser authentication and workspace isolation. Non-loopback binds are refused unless multi-user mode and Secure cookies are enabled inside the supplied container profile. POST requests require JSON and same-origin Origin validation when an Origin header is supplied.
+## Data flow: cloud telemetry
 
-## Correlation and graph semantics
+~~~mermaid
+flowchart LR
+  A[AWS CloudTrail] --> W[Workspace collector]
+  B[Azure Activity Logs] --> W
+  W -->|bounded read-only requests| N[Normalize provider events]
+  N --> D[Detection rules]
+  D --> C[Incident correlation]
+  C --> T[(Workspace evidence database)]
+  T --> U[Authenticated React console]
+  T --> E[Evidence export and verification]
+  W <--> L[(Shared worker lease and heartbeat state)]
+~~~
 
-The incident builder groups findings by actor and account when adjacent finding timestamps are within a time window. The relationship graph includes event/finding nodes, actor and account context nodes, resource nodes derived from normalized resource identifiers, and temporal sequence hypotheses. Resource-reference edges reflect observed fields. Temporal sequence edges reflect membership in the same correlated incident and optional resource overlap. They do not establish causality, identity delegation, resource ownership or a complete attack path.
+Collection is scheduled polling, not streaming. AWS CloudTrail management-event history and Azure subscription Activity Logs are bounded control-plane sources. Inventory refresh is intentionally partial. A connection must be configured, tested and explicitly enabled by an authorized workspace administrator. Provider identity ownership is reserved globally to prevent one provider identity from being attached to multiple workspaces.
 
-## Evidence
+## Tenant isolation
 
-SQLite stores canonical JSON payloads and SHA-256 fingerprints. Hashes support integrity comparison but do not prove source authenticity, prevent database replacement or provide trusted timestamps. Legacy mode uses one local database; multi-user mode uses a distinct SQLite evidence database per workspace, selected only from the authenticated server-side session.
+~~~mermaid
+flowchart TB
+  B[Browser request] --> S[Verified server-side session]
+  S --> R[Role and workspace authorization]
+  R -->|workspace A| A[(Tenant A evidence DB)]
+  R -->|workspace B| C[(Tenant B evidence DB)]
+  S --> G[(Shared auth/control DB)]
+  G --> I[Provider identity ownership]
+  G --> Q[Worker leases and response approvals]
+~~~
 
-## AWS collector safety
+The client does not choose an arbitrary tenant database path. The server resolves the workspace from the authenticated session and applies role checks before tenant-scoped operations. Local legacy mode is a single-user development mode and must not be exposed to an untrusted network.
 
-The optional collector calls only CloudTrail LookupEvents. It is disabled unless CLOUDSHIELD_ENABLE_AWS_COLLECTOR=1 is set in the server process environment. Each request is operator-initiated, region-scoped, limited to a 1–1440 minute lookback and at most five pages. No polling, event subscription, resource creation or AWS write API is performed.
+## Controlled response lifecycle
 
-## Trust boundaries
+~~~mermaid
+sequenceDiagram
+  actor Analyst
+  participant API as CloudShield API
+  participant Plan as Response planner
+  participant DB as Shared control DB
+  participant Adapter as Provider adapter boundary
+  Analyst->>API: Request containment
+  API->>Plan: Build action-specific dry run
+  Plan-->>API: Targets, preconditions, blast radius, digest
+  API->>DB: Persist request and initial independent approval
+  Analyst->>API: Request execution
+  API->>DB: Verify quorum, plan digest, expiry, idempotency and kill switch
+  API->>Adapter: Execute only if all guards pass
+  Adapter-->>API: Result and rollback metadata
+  Note over API,Adapter: No production AWS/Azure write adapter is installed. Execution fails closed.
+~~~
 
-- Imported JSON, synthetic fixtures and cloud responses are untrusted.
-- The local server must not be exposed to untrusted networks.
-- Terraform roots are independent examples; no API route runs Terraform.
-- No AWS credentials are needed for offline tests and simulations.
+Execution is intentionally unavailable until a provider-specific adapter has been implemented, reviewed and tested in isolated cloud accounts. Keep the service-wide kill switch enabled. Do not set the execution opt-in in production. Test fakes validate orchestration logic; they do not demonstrate real cloud containment or rollback.
+
+## Evidence model
+
+- Imported and collected provider events are treated as untrusted input.
+- Canonical SHA-256 fingerprints detect changes relative to a known digest; they do not prove origin, truth or trusted time.
+- Portable evidence bundles include incident/event/finding references and integrity metadata.
+- Optional Ed25519 signatures protect a bundle against undetected modification when the public key is trusted independently.
+- Temporal and resource graph edges describe observed relationships or bounded hypotheses, not verified causality or a complete attack path.
+
+## API surface
+
+The API includes health/readiness, authenticated workspace operations, dashboard/analytics, event ingestion, simulation, incident workflow, evidence export/verification, cloud connection configuration/testing, live collection status, response planning/approval and administrator metrics. Exact provider permissions and operator procedures are documented in [Cloud operations](CLOUD_OPERATIONS.md).
+
+## Deployment model
+
+- Local development: loopback-bound Python API and local evidence database.
+- Windows local-production profile: Caddy HTTPS on loopback ports 8088/8443; use scripts/local-production.ps1.
+- Production Compose template: private application network behind Caddy HTTPS ingress, multi-user auth and externally supplied secrets.
+- Worker coordination currently uses SQLite in the shared auth database. This is single-host/shared-volume coordination, not a multi-region distributed lock service. Move coordination and durable jobs to PostgreSQL or a queue before multi-host scaling.
+
+## Explicit non-goals and release gates
+
+CloudShield is not a certified CSPM/SIEM, a full provider inventory service, a streaming event platform, an autonomous remediation system or an HA multi-region service. Live AWS/Azure account acceptance, Firebase MFA policy enforcement, real SMTP delivery, external backup restore, centralized on-call monitoring, load/failover testing and independent security assurance require separately provisioned infrastructure and evidence.
+
+See [current capabilities](CURRENT_CAPABILITIES.md), [security threat model](SECURITY_THREAT_MODEL.md), [cloud operations](CLOUD_OPERATIONS.md) and [Phase 23–26 acceptance report](PHASES_23_26_IMPLEMENTATION_REPORT.md).
