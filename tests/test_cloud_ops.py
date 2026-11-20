@@ -72,6 +72,17 @@ class CloudOpsTests(unittest.TestCase):
             cloud_ops.reserve_workspace_identity(auth_db, "tenant-b", "aws", "arn:aws:iam::123456789012:role/ReadOnly")
         cloud_ops.reserve_workspace_identity(auth_db, "tenant-a", "aws", "arn:aws:iam::123456789012:role/ReadOnly2")
 
+    def test_duplicate_workspace_binding_is_rejected_before_connection_is_saved(self):
+        auth_db = Path(self.temp.name) / "auth.sqlite3"
+        role = "arn:aws:iam::123456789012:role/CloudShieldReadOnly"
+        cloud_ops.configure_aws(self.db, role, "us-east-1", "admin-a",
+                                auth_db_path=auth_db, tenant_id="tenant-a")
+        second_db = Path(self.temp.name) / "tenant-b.sqlite3"
+        with self.assertRaises(PermissionError):
+            cloud_ops.configure_aws(second_db, role, "us-east-1", "admin-b",
+                                    auth_db_path=auth_db, tenant_id="tenant-b")
+        self.assertIsNone(cloud_ops.get_connection(second_db, "aws"))
+
     def test_collection_enable_requires_successful_connection_test(self):
         cloud_ops.configure_aws(self.db, "arn:aws:iam::123456789012:role/CloudShieldReadOnly", "us-east-1", "admin")
         with self.assertRaises(PermissionError):

@@ -96,13 +96,18 @@ def ensure_schema(path: str | Path) -> None:
         db.commit()
 
 
-def configure_aws(path: str | Path, role_arn: str, region: str, actor: str) -> dict[str, Any]:
+def configure_aws(path: str | Path, role_arn: str, region: str, actor: str, *,
+                  auth_db_path: str | Path | None = None, tenant_id: str | None = None) -> dict[str, Any]:
     if not isinstance(role_arn, str) or not re.fullmatch(
         r"arn:(aws|aws-us-gov|aws-cn):iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]{1,512}", role_arn
     ):
         raise ValueError("Enter a valid AWS IAM role ARN for the target account")
     if not isinstance(region, str) or not re.fullmatch(r"[a-z]{2}(?:-[a-z0-9]+)+-\d", region):
         raise ValueError("Enter a valid AWS region")
+    if (auth_db_path is None) != (tenant_id is None):
+        raise ValueError("Both auth database path and tenant ID are required for workspace binding")
+    if auth_db_path is not None:
+        reserve_workspace_identity(auth_db_path, tenant_id, "aws", role_arn)
     external_id = secrets.token_urlsafe(36)
     config = {"role_arn": role_arn, "region": region, "external_id": external_id,
               "configured_by": str(actor)[:128]}
@@ -113,7 +118,8 @@ def configure_aws(path: str | Path, role_arn: str, region: str, actor: str) -> d
 
 
 def configure_azure(path: str | Path, tenant_id: str, subscription_id: str,
-                    managed_identity_client_id: str | None, actor: str) -> dict[str, Any]:
+                    managed_identity_client_id: str | None, actor: str, *,
+                    auth_db_path: str | Path | None = None, workspace_id: str | None = None) -> dict[str, Any]:
     if not isinstance(managed_identity_client_id, str) or not managed_identity_client_id.strip():
         raise ValueError("A workspace-specific Azure managed/workload identity client ID is required")
     try:
@@ -123,6 +129,11 @@ def configure_azure(path: str | Path, tenant_id: str, subscription_id: str,
             managed_identity_client_id = str(uuid.UUID(str(managed_identity_client_id)))
     except (ValueError, TypeError, AttributeError) as exc:
         raise ValueError("Azure tenant, subscription and optional managed identity client IDs must be UUIDs") from exc
+    if (auth_db_path is None) != (workspace_id is None):
+        raise ValueError("Both auth database path and workspace ID are required for workspace binding")
+    identity_key = ":".join((tenant_id, subscription_id, managed_identity_client_id))
+    if auth_db_path is not None:
+        reserve_workspace_identity(auth_db_path, workspace_id, "azure", identity_key)
     config = {"tenant_id": tenant_id, "subscription_id": subscription_id,
               "managed_identity_client_id": managed_identity_client_id,
               "configured_by": str(actor)[:128]}

@@ -708,17 +708,14 @@ class Handler(BaseHTTPRequestHandler):
                 if _auth_enabled() and (not session or session.role != "admin"):
                     return self._send(403, {"error":"Workspace administrator access required"})
                 from . import cloud_ops
+                auth_db = os.environ.get("CLOUDSHIELD_AUTH_DB", str(ROOT / "artifacts" / "auth.sqlite3")) if _auth_enabled() else None
+                workspace_id = session.tenant_id if _auth_enabled() else None
                 if self.path.endswith("/aws"):
-                    result = cloud_ops.configure_aws(_db_path(), body.get("role_arn"), body.get("region", "us-east-1"), actor)
-                    if _auth_enabled():
-                        auth_db = os.environ.get("CLOUDSHIELD_AUTH_DB", str(ROOT / "artifacts" / "auth.sqlite3"))
-                        cloud_ops.reserve_workspace_identity(auth_db, session.tenant_id, "aws", result["role_arn"])
+                    result = cloud_ops.configure_aws(_db_path(), body.get("role_arn"), body.get("region", "us-east-1"), actor,
+                        auth_db_path=auth_db, tenant_id=workspace_id)
                 else:
-                    result = cloud_ops.configure_azure(_db_path(), body.get("tenant_id"), body.get("subscription_id"), body.get("managed_identity_client_id"), actor)
-                    if _auth_enabled():
-                        auth_db = os.environ.get("CLOUDSHIELD_AUTH_DB", str(ROOT / "artifacts" / "auth.sqlite3"))
-                        identity_key = ":".join((result["tenant_id"], result["subscription_id"], result["managed_identity_client_id"]))
-                        cloud_ops.reserve_workspace_identity(auth_db, session.tenant_id, "azure", identity_key)
+                    result = cloud_ops.configure_azure(_db_path(), body.get("tenant_id"), body.get("subscription_id"), body.get("managed_identity_client_id"), actor,
+                        auth_db_path=auth_db, workspace_id=workspace_id)
                 self._audit_mutation("provider.configure", result["provider"])
                 return self._send(201, result)
             if self.path in {"/api/providers/aws/enable", "/api/providers/azure/enable"}:
