@@ -4,26 +4,27 @@
   "source_recording": "cloudshield-demo.mp4 (original retained locally; not committed)",
   "public_video": {
     "path": "evidence/media/cloudshield-demo-redacted.mp4",
-    "fps": 30.0,
-    "frame_count": 3074,
-    "width": 1548,
-    "height": 942,
-    "duration_seconds": 102.47,
-    "size_bytes": 63287839,
-    "sha256": "daf5674f06bc5bf1da1baef739d4017f3cff7a621ddb05bfc9b360c2a709b3f8",
+    "fps": 24.0,
+    "frame_count": 2459,
+    "width": 1280,
+    "height": 778,
+    "duration_seconds": 102.46,
+    "size_bytes": 3847003,
+    "sha256": "5e59dde4b5131e3dd90595744819850b269070216cbb4e5e2e9597883616792f",
     "privacy_redactions": [
       "browser chrome cropped from all frames",
       "signed-in identity header blurred throughout",
       "workspace-member identity row blurred in the final workspace-administration segment"
     ],
-    "audio": "Re-encoded with OpenCV VideoWriter; source audio track is not preserved in this public copy."
+    "audio": "Re-encoded with OpenCV VideoWriter; source audio track is not preserved in this public copy.",
+    "encoding": "H.264/AVC, 1280px wide, 24 fps, CRF 29, silent MP4"
   },
   "dataset_note": "Screenshots and demo depict the local synthetic lab workspace; they are not live customer cloud telemetry.",
   "files": [
     {
       "path": "evidence/media/cloudshield-demo-redacted.mp4",
-      "size_bytes": 63287839,
-      "sha256": "daf5674f06bc5bf1da1baef739d4017f3cff7a621ddb05bfc9b360c2a709b3f8"
+      "size_bytes": 3847003,
+      "sha256": "5e59dde4b5131e3dd90595744819850b269070216cbb4e5e2e9597883616792f"
     },
     {
       "path": "evidence/media/01-command-center-overview.png",

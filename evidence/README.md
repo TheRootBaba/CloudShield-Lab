@@ -6,7 +6,7 @@ This directory contains intentional, reviewable project evidence. It does not co
 
 | Asset | Provenance | What it demonstrates |
 |---|---|---|
-| media/cloudshield-demo-redacted.mp4 | Privacy-sanitized copy of the local 102-second walkthrough | Product navigation, investigation, evidence vault, alerts, response request flow, cloud connection setup and workspace administration |
+| media/cloudshield-demo-redacted.mp4 | Privacy-sanitized, H.264-compressed 102-second walkthrough (1280?778, 24 fps, silent; about 3.7 MiB) | Product navigation, investigation, evidence vault, alerts, response request flow, cloud connection setup and workspace administration |
 | media/01-command-center-overview.png | Frame from the local walkthrough, 27 seconds | Overview metrics and event activity |
 | media/02-evidence-vault.png | Frame from the local walkthrough, 48 seconds | Evidence records and integrity fingerprints |
 | media/03-alerts-and-response.png | Frame from the local walkthrough, 55 seconds | HIGH/CRITICAL alert review and acknowledgement |
@@ -20,7 +20,7 @@ See [acceptance evidence](acceptance/README.md) for the local verification JSON,
 
 ## Privacy and data classification
 
-The original recording contained a signed-in display name and email address in the workspace-members dialog. The public copy applies privacy redactions to the signed-in identity area throughout the video and to the member row where it appears, and crops the browser chrome. The source recording also contains an audio track; audio is intentionally omitted from the public copy because it was not separately reviewed for spoken personal or confidential information. The original recording remains in the author's Documents folder and is not committed.
+The original recording contained a signed-in display name and email address in the workspace-members dialog. The public copy is re-encoded as H.264 at 1280?778 and 24 fps, reducing the committed video from about 63.3 MiB to about 3.7 MiB (roughly 94% smaller) while preserving the full 102-second walkthrough. It applies privacy redactions to the signed-in identity area throughout the video and to the member row where it appears, and crops the browser chrome. The source recording also contains an audio track; audio is intentionally omitted from the public copy because it was not separately reviewed for spoken personal or confidential information. The original recording remains in the author's Documents folder and is not committed.
 
 The selected screenshots use the same privacy masks. The walkthrough uses a local synthetic lab dataset and example provider identifiers. It is not a recording of a live customer AWS/Azure account, production cloud containment or real provider telemetry. Do not interpret displayed counts as measured detection accuracy.
 
