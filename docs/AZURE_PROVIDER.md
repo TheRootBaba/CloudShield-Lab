@@ -35,7 +35,11 @@ cloudshield azure-inventory --max-pages 10 --max-records 2000 --output artifacts
 cloudshield azure-activity-logs --lookback-hours 24 --max-pages 10 --max-records 2000 --output artifacts/azure-activity.json
 ```
 
-The local API also exposes `GET /api/providers`, `POST /api/collector/azure/inventory` and `POST /api/collector/azure/activity-logs`. API collection requires the admin role when role tokens are configured. The subscription ID is read from `AZURE_SUBSCRIPTION_ID` in the server environment; it is not accepted from an arbitrary request body.
+The single-user local API also exposes `GET /api/providers`, `POST /api/collector/azure/inventory` and `POST /api/collector/azure/activity-logs`; that legacy path uses `AZURE_SUBSCRIPTION_ID`. In Firebase multi-user mode, the subscription and identity are loaded from the authenticated workspace connection record; the request body cannot choose another tenant or subscription.
+
+## Multi-user workspace connection path (Phase 21)
+
+The CLI and explicit single-user local adapter may use Azure SDK `DefaultAzureCredential` for an operator's one-shot command. The shared Firebase/multi-user API and scheduled worker do **not** use that shared credential chain. They read the current workspace's tenant, subscription and client ID and instantiate either `ManagedIdentityCredential(client_id=...)` or `WorkloadIdentityCredential(tenant_id=..., client_id=..., token_file_path=...)`. They do not fall back to Azure CLI, developer credentials or client secrets. The UI requires a client ID and the global registry prevents reusing the same identity tuple in another workspace. A workspace administrator must test both ARM resource-read and Activity Log-read permissions before enabling polling.
 
 ## Permissions and boundaries
 

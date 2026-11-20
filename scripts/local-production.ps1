@@ -30,8 +30,10 @@ services:
 [IO.File]::WriteAllText($overrideFile, $override, [System.Text.UTF8Encoding]::new($false))
 
 if (-not $ComposeArgs -or $ComposeArgs.Count -eq 0) {
-    $ComposeArgs = @("up", "-d")
+    $ComposeArgs = @("up", "--detach")
 }
+# Prefer the long form: PowerShell can consume short -d as an abbreviated common parameter.
+$ComposeArgs = @($ComposeArgs | ForEach-Object { if ($_ -eq "-d") { "--detach" } else { $_ } })
 
 & docker compose --env-file $envFile -f $composeFile -f $overrideFile @ComposeArgs
 if ($LASTEXITCODE -ne 0) {

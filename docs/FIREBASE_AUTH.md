@@ -106,3 +106,12 @@ The browser's Firebase SDK converts Identity Toolkit HTTP 400 responses into Fir
 | auth/invalid-credential | Sign-in credential is not accepted | Recheck email/password; if unverified, sign in to trigger another verification email. |
 
 A GET /api/auth/me response of 401 before a CloudShield session is issued is expected. After a successful Firebase sign-in, CloudShield verifies the Firebase ID token and creates its own session cookie; subsequent /api/auth/me requests should return the CloudShield user. A Firebase account existing by itself does not yet imply that a CloudShield workspace membership has been created.
+
+
+## TOTP MFA and organization SSO (Phase 21)
+
+The web client supports Firebase TOTP second-factor enrollment and sign-in challenges. Users can open **Account security** to enroll an authenticator using a manual setup secret or copied otpauth URI, add a second device, and remove a factor when another factor remains. Sign-in resolves Firebase's `auth/multi-factor-auth-required` challenge with a six-digit TOTP code.
+
+Before enforcing MFA, enable Firebase Authentication with Identity Platform, enable TOTP as a second factor, enroll users from Account security and test a fresh sign-in. This client does not implement SMS MFA or recovery codes; do not enforce TOTP until the user recovery process is ready.
+
+Firebase OIDC/SAML SSO is enabled by configuring one provider in Firebase and setting `CLOUDSHIELD_FIREBASE_SSO_PROVIDER_ID` to its Firebase provider ID (for example `oidc.company` or `saml.company`) in the private server environment. The sign-in screen then shows **Continue with organization SSO**. Configure authorized domains, provider metadata and verified-email claims in Firebase before enabling it.

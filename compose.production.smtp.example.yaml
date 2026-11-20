@@ -1,0 +1,19 @@
+# Optional overlay for authenticated SMTP notifications.
+# Usage:
+# docker compose --env-file .env.production -f compose.production.yaml -f compose.production.smtp.example.yaml up -d
+services:
+  cloudshield-worker:
+    environment:
+      CLOUDSHIELD_SMTP_HOST: ${CLOUDSHIELD_SMTP_HOST:?Set SMTP host}
+      CLOUDSHIELD_SMTP_PORT: ${CLOUDSHIELD_SMTP_PORT:-587}
+      CLOUDSHIELD_SMTP_USERNAME: ${CLOUDSHIELD_SMTP_USERNAME:?Set SMTP username}
+      CLOUDSHIELD_SMTP_FROM: ${CLOUDSHIELD_SMTP_FROM:?Set verified sender address}
+      CLOUDSHIELD_SMTP_PASSWORD_FILE: /run/secrets/smtp-password
+      CLOUDSHIELD_PUBLIC_URL: ${CLOUDSHIELD_PUBLIC_URL:?Set public CloudShield HTTPS URL}
+    secrets:
+      - source: smtp_password
+        target: smtp-password
+
+secrets:
+  smtp_password:
+    file: ${CLOUDSHIELD_SMTP_PASSWORD_HOST_FILE:?Set path to a host-side SMTP password file}

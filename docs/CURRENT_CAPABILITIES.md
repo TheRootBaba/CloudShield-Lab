@@ -74,3 +74,20 @@ See also:
 - [Detection coverage](DETECTION_COVERAGE.md)
 - [Release assurance gates](RELEASE_ASSURANCE.md)
 - [Roadmap](ROADMAP.md)
+
+
+## Phase 21 implementation addendum ? 19 November 2026
+
+The current branch adds the following software capabilities beyond the earlier snapshot above:
+
+- **Workspace-scoped cloud identities:** AWS role ARN + unique ExternalId with STS AssumeRole; Azure tenant/subscription + explicit managed/workload identity client ID. A global registry prevents the same identity tuple from being bound to multiple workspaces. Provider connections are disabled until an administrator successfully tests them.
+- **Scheduled read-only collection:** a separate Docker worker polls enabled workspaces (default 5 minutes, configurable 1?60 minutes), uses bounded lookback/page counts and standard SDK retries, and refreshes limited inventory every six hours. Provider status and worker heartbeat are visible in Data Sources.
+- **Live inventory persistence:** AWS selected EC2/security-group/S3-name/IAM metadata and Azure bounded ARM resource metadata are stored per workspace. This remains incomplete inventory, not organization-wide authoritative discovery.
+- **Alerting:** new HIGH/CRITICAL findings create deduplicated workspace alerts. Active workspace admins/responders can receive optional authenticated STARTTLS email notifications; in-app alerts work without SMTP.
+- **Response approvals:** finding-specific containment guidance can be requested by a responder and must be approved/rejected by a different workspace administrator. Decisions are audited. Approval does not execute cloud writes; execution is intentionally disabled.
+- **Identity integrations:** Firebase TOTP enrollment and second-factor challenge handling plus one configured Firebase OIDC/SAML provider flow are implemented. Firebase Identity Platform enforcement, IdP metadata and domain configuration remain operator prerequisites.
+- **Operations groundwork:** readiness endpoint includes a worker heartbeat; production Compose includes a separate worker service. An optional Terraform S3 backup root, offsite upload script and isolated restore-drill script are included.
+
+### Phase 21 boundaries not yet externally verified
+
+No live AWS/Azure tenant connection was available during implementation. No cloud infrastructure was applied. No SMTP delivery, Firebase TOTP enrollment/SSO provider, S3 Object Lock upload, offsite restore drill, centralized monitoring deployment, production load test or independent penetration test has been performed. Guided response execution is not implemented. See `docs/NEXT_PHASES_DELIVERY_REPORT.md` and `docs/CLOUD_OPERATIONS.md` for the complete status and operator steps.

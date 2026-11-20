@@ -1,3 +1,9 @@
+# Current status superseding historical roadmap snapshots ? 19 November 2026
+
+The historical checklist below records prior phase work and contains older single-user/provider-gating statements. For current Phase 21 implementation status, read [NEXT_PHASES_DELIVERY_REPORT.md](NEXT_PHASES_DELIVERY_REPORT.md) and [CLOUD_OPERATIONS.md](CLOUD_OPERATIONS.md). The current branch has workspace-scoped AWS/Azure identity configuration, a separate scheduled collector worker, persistent bounded inventory, HIGH/CRITICAL alerting with optional SMTP, independently approved response requests, Firebase TOTP/SSO client flows, readiness heartbeat and an opt-in S3 Object Lock backup Terraform root. Live cloud/SMTP/IdP/backup execution and independent assurance remain external release gates; response write actions are not implemented.
+
+---
+
 # Delivery roadmap and progress
 
 CloudShield Lab is a local-first defensive engineering lab. A checked item means the implementation and local automated checks exist; it does not imply production readiness or live-cloud validation.
@@ -111,8 +117,8 @@ CloudShield Lab is a local-first defensive engineering lab. A checked item means
 - [ ] Independent trusted timestamping or immutable evidence storage.
 - [ ] Full causal attack-path analysis only after trustworthy identity, network and resource relationship data exists. Current Phase 14 graph is correlation-only; see `docs/ATTACK_PATH_CORRELATION.md`.
 
-## Current safety boundary
-The app binds to 127.0.0.1 by default. It is not a production CSPM/SIEM, does not perform automated remediation, and has no multi-user authentication or tenant isolation. Synthetic scenarios never execute attacks. The live CloudTrail collector and AWS inventory both require explicit opt-in and perform bounded read-only API calls only. No AWS resources are created or modified by either feature.
+## Current safety boundary (supersedes the historical note above)
+The local app binds to 127.0.0.1 by default and uses Firebase-backed multi-user authentication with workspace-isolated evidence databases. AWS/Azure connections are workspace-scoped, disabled until tested and explicitly enabled, and collection is read-only and bounded. Synthetic scenarios never execute attacks. Guided response requests require a separate administrator decision, but execution remains fail-closed; no cloud write/remediation API is implemented. CloudShield is not a production-certified CSPM/SIEM/SOAR, and the external acceptance gates in the Phase 21 delivery report remain open.
 
 
 ## Offline verification refresh — 19 November 2026

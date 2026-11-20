@@ -24,6 +24,15 @@ class InfrastructureFixtureTests(unittest.TestCase):
                 self.assertIn("default     = false", source)
                 self.assertIn("count", source)
 
+    def test_offsite_backup_root_is_opt_in_encrypted_and_immutable(self):
+        source = (ROOT / "terraform" / "backup" / "main.tf").read_text()
+        self.assertIn('default     = false', source)
+        self.assertIn('object_lock_enabled = true', source)
+        self.assertIn('mode = "COMPLIANCE"', source)
+        self.assertIn('sse_algorithm     = "aws:kms"', source)
+        self.assertIn('sts:ExternalId', source)
+        self.assertNotIn('"s3:DeleteObject"', source)
+
     def test_secure_and_vulnerable_are_separate_roots(self):
         self.assertTrue((ROOT / "terraform" / "secure" / "main.tf").is_file())
         self.assertTrue((ROOT / "terraform" / "vulnerable" / "main.tf").is_file())

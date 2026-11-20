@@ -79,3 +79,8 @@ Keep both disabled for offline use. Never use root/Owner/Contributor credentials
 ## Final release boundary
 
 The core local multi-user tranche is implemented with browser sessions and isolated workspaces. The production HTTPS stack is a validated configuration template, not a deployed service. Do not expose the listener directly. Phases 15?20 cannot be marked fully production-complete until enterprise identity, live provider, independent security and real-host operational gates are performed.
+
+
+## Phase 21 identity and scheduler addendum ? 19 November 2026
+
+The earlier Azure provider section describes the initial one-shot CLI integration. The shared Firebase/multi-user application now uses an explicit per-workspace Azure identity (managed identity or workload identity federation) and does not use the default developer credential chain. AWS uses a per-workspace AssumeRole target and unique ExternalId. See `CLOUD_OPERATIONS.md` and `NEXT_PHASES_DELIVERY_REPORT.md` for current connection, scheduler, alert, approval and operations status. Live provider acceptance is still pending real sandbox accounts.

@@ -1,6 +1,7 @@
 import http.cookiejar
 import json
 import os
+import sqlite3
 import tempfile
 import threading
 import unittest
@@ -183,6 +184,122 @@ class MultiUserApiTests(unittest.TestCase):
             self.assertEqual(403, self.call(admin, "/api/collector/azure/inventory", "POST", {})[0])
 
 
+    def test_workspace_provider_configuration_is_scoped_and_disabled_by_default(self):
+        admin, _ = self.client()
+        status, _ = self.call(admin, "/api/auth/register", "POST", {
+            "email":"admin@example.test", "display_name":"Admin", "tenant_name":"Provider Lab",
+            "password":"a secure admin passphrase"
+        })
+        self.assertEqual(status, 200)
+        status, configured = self.call(admin, "/api/providers/aws", "POST", {
+            "role_arn":"arn:aws:iam::123456789012:role/CloudShieldReadOnly", "region":"us-east-1"
+        })
+        self.assertEqual(status, 201)
+        self.assertTrue(configured["external_id"])
+        providers = self.call(admin, "/api/providers")[1]["providers"]
+        aws = next(item for item in providers if item["id"] == "aws")
+        self.assertTrue(aws["configured"])
+        self.assertEqual(aws["role_arn"], "arn:aws:iam::123456789012:role/CloudShieldReadOnly")
+        self.assertEqual(aws["region"], "us-east-1")
+        self.assertFalse(aws["enabled"])
+        self.assertFalse(aws["credentials_detected"])
+        status, blocked = self.call(admin, "/api/providers/aws/enable", "POST", {"enabled":True})
+        self.assertEqual(status, 403)
+        self.assertIn("Test the workspace cloud identity", blocked["error"])
+
+        status, invite = self.call(admin, "/api/team/invites", "POST", {"role":"responder"})
+        self.assertEqual(status, 201)
+        responder, _ = self.client()
+        status, _ = self.call(responder, "/api/auth/register", "POST", {
+            "email":"responder@example.test", "display_name":"Responder", "password":"a secure responder passphrase",
+            "invite_code":invite["invite_code"]
+        })
+        self.assertEqual(status, 200)
+        status, _ = self.call(responder, "/api/providers/azure", "POST", {
+            "tenant_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            "subscription_id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            "managed_identity_client_id":"cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+        })
+        self.assertEqual(status, 403)
+
+    def test_readiness_is_public_for_external_monitoring(self):
+        admin, _ = self.client()
+        status, _ = self.call(admin, "/api/auth/register", "POST", {
+            "email":"admin@example.test", "display_name":"Admin", "tenant_name":"Monitor Lab",
+            "password":"a secure admin passphrase"
+        })
+        self.assertEqual(status, 200)
+        from cloudshield.worker import _record_heartbeat
+        _record_heartbeat(Path(os.environ["CLOUDSHIELD_AUTH_DB"]))
+        anonymous, _ = self.client()
+        status, ready = self.call(anonymous, "/api/health/ready")
+        self.assertEqual(status, 200)
+        self.assertTrue(ready["ok"])
+
+    def test_readiness_reports_worker_heartbeat(self):
+        admin, _ = self.client()
+        status, _ = self.call(admin, "/api/auth/register", "POST", {
+            "email":"admin@example.test", "display_name":"Admin", "tenant_name":"Readiness Lab",
+            "password":"a secure admin passphrase"
+        })
+        self.assertEqual(status, 200)
+        status, ready = self.call(admin, "/api/health/ready")
+        self.assertEqual(status, 503)
+        self.assertEqual(ready["database"], "ok")
+        self.assertEqual(ready["worker"], "not_started")
+        from cloudshield.worker import _record_heartbeat
+        _record_heartbeat(Path(os.environ["CLOUDSHIELD_AUTH_DB"]))
+        status, ready = self.call(admin, "/api/health/ready")
+        self.assertEqual(status, 200)
+        self.assertEqual(ready["worker"], "running")
+        auth_db = sqlite3.connect(os.environ["CLOUDSHIELD_AUTH_DB"])
+        try:
+            auth_db.execute("UPDATE worker_heartbeat SET heartbeat_at='2000-01-01T00:00:00Z' WHERE worker_id='primary'")
+            auth_db.commit()
+        finally:
+            auth_db.close()
+        status, ready = self.call(admin, "/api/health/ready")
+        self.assertEqual(status, 503)
+        self.assertEqual(ready["worker"], "stale")
+
+    def test_alert_acknowledgement_and_independent_response_approval(self):
+        admin, _ = self.client()
+        status, _ = self.call(admin, "/api/auth/register", "POST", {
+            "email":"admin@example.test", "display_name":"Admin", "tenant_name":"Response Lab",
+            "password":"a secure admin passphrase"
+        })
+        self.assertEqual(status, 200)
+        status, _ = self.call(admin, "/api/simulate", "POST", {"scenario":"multi-stage-compromise"})
+        self.assertEqual(status, 200)
+        alerts = self.call(admin, "/api/alerts")[1]
+        self.assertTrue(alerts)
+        findings = self.call(admin, "/api/findings")[1]
+        finding = next(item for item in findings if item["severity"] in {"HIGH","CRITICAL"})
+        guidance = self.call(admin, f"/api/findings/{finding['finding_id']}/recommendations")[1]
+        self.assertTrue(guidance["recommendations"])
+        status, invite = self.call(admin, "/api/team/invites", "POST", {"role":"responder"})
+        self.assertEqual(status, 201)
+        responder, _ = self.client()
+        status, _ = self.call(responder, "/api/auth/register", "POST", {
+            "email":"responder@example.test", "display_name":"Responder", "password":"a secure responder passphrase",
+            "invite_code":invite["invite_code"]
+        })
+        self.assertEqual(status, 200)
+        status, request = self.call(responder, "/api/responses", "POST", {
+            "finding_id":finding["finding_id"], "action":guidance["recommendations"][0]["action"],
+            "rationale":"Independent review requested based on the synthetic finding and linked event evidence."
+        })
+        self.assertEqual(status, 201)
+        self.assertEqual(request["status"], "pending")
+        self.assertEqual(403, self.call(responder, f"/api/responses/{request['request_id']}/decision", "POST", {"approve":True})[0])
+        status, approved = self.call(admin, f"/api/responses/{request['request_id']}/decision", "POST", {"approve":True,"note":"Reviewed by workspace admin."})
+        self.assertEqual(status, 200)
+        self.assertEqual(approved["status"], "approved")
+        self.assertFalse(guidance["execution_enabled"])
+        status, acknowledged = self.call(responder, f"/api/alerts/{alerts[0]['alert_id']}/acknowledge", "POST", {})
+        self.assertEqual(status, 200)
+        self.assertIsNotNone(acknowledged["acknowledged_at"])
+
     def test_expired_session_and_cross_origin_mutation_are_rejected(self):
         opener, jar = self.client()
         status, _ = self.call(opener, "/api/auth/register", "POST", {
@@ -232,7 +349,7 @@ class MultiUserApiTests(unittest.TestCase):
             self.assertEqual(403, self.call(opener, "/api/auth/register", "POST", payload)[0])
             payload["bootstrap_token"] = "wrong-key"
             self.assertEqual(403, self.call(opener, "/api/auth/register", "POST", payload)[0])
-            payload["bootstrap_token"] = "🔑" * 48
+            payload["bootstrap_token"] = "ðŸ”‘" * 48
             self.assertEqual(403, self.call(opener, "/api/auth/register", "POST", payload)[0])
             payload["bootstrap_token"] = {"unexpected": "object"}
             self.assertEqual(403, self.call(opener, "/api/auth/register", "POST", payload)[0])

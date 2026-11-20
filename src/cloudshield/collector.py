@@ -5,7 +5,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-def collect_cloudtrail(region: str = "us-east-1", lookback_minutes: int = 60, max_pages: int = 5) -> dict[str, Any]:
+def collect_cloudtrail(region: str = "us-east-1", lookback_minutes: int = 60, max_pages: int = 5, session=None) -> dict[str, Any]:
     if not 1 <= int(lookback_minutes) <= 1440:
         raise ValueError("lookback_minutes must be between 1 and 1440")
     if not 1 <= int(max_pages) <= 20:
@@ -18,7 +18,7 @@ def collect_cloudtrail(region: str = "us-east-1", lookback_minutes: int = 60, ma
     except ImportError as exc:
         raise RuntimeError("AWS collector dependency missing. Install with: pip install -e .[aws]") from exc
     now = datetime.now(timezone.utc)
-    client = boto3.client("cloudtrail", region_name=region, config=Config(retries={"mode":"standard", "total_max_attempts":4}))
+    client = (session or boto3).client("cloudtrail", region_name=region, config=Config(retries={"mode":"standard", "total_max_attempts":4}))
     events = []
     token = None
     seen_tokens = set()

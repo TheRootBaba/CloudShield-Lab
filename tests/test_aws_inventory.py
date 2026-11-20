@@ -58,7 +58,7 @@ class FakeSession:
             }),
         }
 
-    def client(self, name, region_name=None):
+    def client(self, name, region_name=None, config=None):
         return self.clients[name]
 
 

@@ -118,7 +118,6 @@ def collect_inventory(regions: list[str], max_pages: int = 1, session=None) -> d
         raise ValueError("One or more AWS region identifiers are invalid")
     if not isinstance(max_pages, int) or not 1 <= max_pages <= MAX_PAGES:
         raise ValueError(f"max_pages must be between 1 and {MAX_PAGES}")
-    use_standard_retries = session is None
     if session is None:
         try:
             import boto3
@@ -127,10 +126,9 @@ def collect_inventory(regions: list[str], max_pages: int = 1, session=None) -> d
         session = boto3.Session()
 
     def client(name, region_name=None):
-        if use_standard_retries:
-            from botocore.config import Config
-            return session.client(name, region_name=region_name, config=Config(retries={"mode":"standard", "total_max_attempts":4}))
-        return session.client(name, region_name=region_name)
+        from botocore.config import Config
+        return session.client(name, region_name=region_name,
+            config=Config(retries={"mode":"standard", "total_max_attempts":4}))
 
     calls = 0
     truncated = False

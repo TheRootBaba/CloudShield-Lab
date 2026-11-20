@@ -15,7 +15,7 @@ CloudShield now has two selectable provider adapters: AWS and Microsoft Azure. B
 
 - Subscription-scoped ARM resource metadata inventory.
 - Subscription Activity Log collection for a bounded UTC time window.
-- `DefaultAzureCredential` authentication; Azure SDK retry policy configured for transient HTTP errors. Reported page/API counts are logical SDK operations and do not include internal retry attempts.
+- Azure SDK retry policy configured for transient HTTP errors. The one-shot CLI may use `DefaultAzureCredential`; the shared multi-user API/worker uses explicit workspace-specific `ManagedIdentityCredential` or `WorkloadIdentityCredential` and does not fall back to a shared developer credential chain.
 - Page and record caps, partial-page retention, continuation/truncation reporting, subscription provenance and required permission actions.
 - Conservative detections for role assignment writes and diagnostic-setting deletion.
 

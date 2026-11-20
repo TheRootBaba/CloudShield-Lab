@@ -60,6 +60,9 @@ jobs:
       - name: Validate vulnerable training fixture
         working-directory: terraform/vulnerable
         run: terraform init -backend=false -input=false && terraform validate
+      - name: Validate offsite backup infrastructure
+        working-directory: terraform/backup
+        run: terraform init -backend=false -input=false && terraform validate
 
   container-build:
     runs-on: ubuntu-latest
@@ -74,3 +77,13 @@ jobs:
           mkdir -p /tmp/cloudshield-ci-secrets
           printf '{"ci":true}' > /tmp/cloudshield-ci-secrets/firebase-admin.json
           CLOUDSHIELD_FIREBASE_CREDENTIALS_FILE=/tmp/cloudshield-ci-secrets/firebase-admin.json docker compose --env-file .env.production.example -f compose.production.yaml config --quiet
+      - name: Validate optional SMTP notification overlay
+        run: |
+          printf 'ci-only-password' > /tmp/cloudshield-ci-secrets/smtp-password
+          CLOUDSHIELD_FIREBASE_CREDENTIALS_FILE=/tmp/cloudshield-ci-secrets/firebase-admin.json \
+          CLOUDSHIELD_SMTP_PASSWORD_HOST_FILE=/tmp/cloudshield-ci-secrets/smtp-password \
+          CLOUDSHIELD_SMTP_HOST=smtp.example.test \
+          CLOUDSHIELD_SMTP_USERNAME=ci-user \
+          CLOUDSHIELD_SMTP_FROM=alerts@example.test \
+          CLOUDSHIELD_PUBLIC_URL=https://cloudshield.example.test \
+          docker compose --env-file .env.production.example -f compose.production.yaml -f compose.production.smtp.example.yaml config --quiet
