@@ -236,6 +236,33 @@ class MultiUserApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertTrue(ready["ok"])
 
+    def test_metrics_endpoint_is_administrator_only_and_low_cardinality(self):
+        admin, _ = self.client()
+        status, _ = self.call(admin, "/api/auth/register", "POST", {
+            "email":"admin@example.test", "display_name":"Admin", "tenant_name":"Metrics Lab",
+            "password":"a secure admin passphrase"
+        })
+        self.assertEqual(status, 200)
+        status, metrics = self.call(admin, "/api/metrics")
+        self.assertEqual(status, 200)
+        self.assertIn("running_workers", metrics)
+        self.assertEqual("service-wide low-cardinality counters; no tenant labels", metrics["scope"])
+        status, blocked_switch = self.call(admin, "/api/responses/control/kill-switch", "POST", {"enabled":False})
+        self.assertEqual(status, 403)
+        self.assertIn("local deployment operator", blocked_switch["error"])
+        status, switch = self.call(admin, "/api/responses/control/kill-switch", "POST", {"enabled":True})
+        self.assertEqual(status, 200)
+        self.assertEqual("enabled", switch["kill_switch"])
+        status, invite = self.call(admin, "/api/team/invites", "POST", {"role":"responder"})
+        self.assertEqual(status, 201)
+        responder, _ = self.client()
+        status, _ = self.call(responder, "/api/auth/register", "POST", {
+            "email":"responder@example.test", "display_name":"Responder",
+            "password":"a secure responder passphrase", "invite_code":invite["invite_code"]
+        })
+        self.assertEqual(status, 200)
+        self.assertEqual(403, self.call(responder, "/api/metrics")[0])
+
     def test_readiness_reports_worker_heartbeat(self):
         admin, _ = self.client()
         status, _ = self.call(admin, "/api/auth/register", "POST", {
@@ -254,7 +281,7 @@ class MultiUserApiTests(unittest.TestCase):
         self.assertEqual(ready["worker"], "running")
         auth_db = sqlite3.connect(os.environ["CLOUDSHIELD_AUTH_DB"])
         try:
-            auth_db.execute("UPDATE worker_heartbeat SET heartbeat_at='2000-01-01T00:00:00Z' WHERE worker_id='primary'")
+            auth_db.execute("UPDATE worker_heartbeats SET heartbeat_at='2000-01-01T00:00:00+00:00' WHERE worker_id='primary'")
             auth_db.commit()
         finally:
             auth_db.close()
@@ -295,6 +322,14 @@ class MultiUserApiTests(unittest.TestCase):
         status, approved = self.call(admin, f"/api/responses/{request['request_id']}/decision", "POST", {"approve":True,"note":"Reviewed by workspace admin."})
         self.assertEqual(status, 200)
         self.assertEqual(approved["status"], "approved")
+        status, plan = self.call(admin, f"/api/responses/{request['request_id']}/dry-run", "POST", {})
+        self.assertEqual(status, 200)
+        self.assertEqual(plan["execution"], "not_performed")
+        status, blocked = self.call(admin, f"/api/responses/{request['request_id']}/execute", "POST", {
+            "idempotency_key":"test-idempotency-key-0001", "plan_sha256":plan["plan_sha256"]
+        })
+        self.assertEqual(status, 503)
+        self.assertIn("No reviewed provider write adapter", blocked["error"])
         self.assertFalse(guidance["execution_enabled"])
         status, acknowledged = self.call(responder, f"/api/alerts/{alerts[0]['alert_id']}/acknowledge", "POST", {})
         self.assertEqual(status, 200)

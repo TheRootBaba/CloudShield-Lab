@@ -370,22 +370,24 @@ def recommendations(finding: dict[str, Any]) -> list[dict[str, str]]:
       {"action":"restore_audit_logging","title":"Restore and protect audit logging",
        "rationale":"Confirm the logging gap and restore the approved trail/configuration without overwriting retained evidence."},
     ]
-    if "s3" in rule:
+    if "s3" in rule or "cs-s3" in rule:
         return [{"action":"remove_unintended_public_access","title":"Remove unintended public access",
           "rationale":"Confirm intended sharing and dependencies, then restore account and bucket public-access guardrails."}]
-    if "ingress" in rule or "network" in rule or "security_group" in rule:
+    if any(token in rule for token in ("ingress", "network", "security_group", "cs-net")):
         return [suggestions[1]]
-    if "iam" in rule or "credential" in rule or "access_key" in rule:
+    if any(token in rule for token in ("credential", "access_key", "cs-iam-002")):
         return [suggestions[0]]
-    if "cloudtrail" in rule or "logging" in rule:
+    if "cloudtrail" in rule or "logging" in rule or "cs-ct-001" in rule:
         return [suggestions[2]]
-    return suggestions
+    # Policy/trust changes and Azure signals require action-specific remediation
+    # plans; never offer an unrelated credential-revocation action as a fallback.
+    return []
 
 
 def request_response(path: str | Path, finding_id: str, action: str, rationale: str, actor: str) -> dict[str, Any]:
     if not all(isinstance(v, str) and v.strip() for v in (finding_id, action, rationale, actor)):
         raise ValueError("Finding, action, rationale and requester are required")
-    if len(finding_id) > 160 or len(action) > 100 or len(rationale) > 2000:
+    if len(finding_id) > 160 or len(action) > 100 or len(rationale) > 2000 or len(actor) > 256:
         raise ValueError("Response request exceeds allowed length")
     allowed = {"review_and_revoke_suspicious_credentials", "restrict_exposed_network_rule",
                "restore_audit_logging", "remove_unintended_public_access"}
@@ -393,6 +395,7 @@ def request_response(path: str | Path, finding_id: str, action: str, rationale: 
     if action not in allowed:
         raise ValueError("Action is not in the reviewed response catalogue")
     ensure_schema(path)
+    actor_key = actor.strip().casefold()
     request_id = secrets.token_urlsafe(18)
     with _connect(path) as db:
         rows = db.execute("SELECT event_id,rule_id,payload_json FROM findings").fetchall()
@@ -408,15 +411,17 @@ def request_response(path: str | Path, finding_id: str, action: str, rationale: 
         db.execute("""INSERT INTO response_requests
           (request_id,finding_id,action,rationale,status,requested_by,requested_at)
           VALUES(?,?,?,?, 'pending',?,?)""",
-          (request_id, finding_id, action, rationale.strip(), str(actor)[:128], _now()))
+          (request_id, finding_id, action, rationale.strip(), actor_key[:128], _now()))
         db.commit()
         row = db.execute("SELECT * FROM response_requests WHERE request_id=?", (request_id,)).fetchone()
     return dict(row)
 
 
 def decide_response(path: str | Path, request_id: str, actor: str, approve: bool, note: str = "") -> dict[str, Any]:
-    if not isinstance(approve, bool) or not isinstance(note, str) or len(note) > 1000:
+    if (not isinstance(approve, bool) or not isinstance(note, str) or len(note) > 1000
+            or not isinstance(actor, str) or not actor.strip() or len(actor) > 256):
         raise ValueError("Invalid approval decision")
+    actor_key = actor.strip().casefold()[:128]
     ensure_schema(path)
     with _connect(path) as db:
         db.execute("BEGIN IMMEDIATE")
@@ -425,11 +430,11 @@ def decide_response(path: str | Path, request_id: str, actor: str, approve: bool
             raise KeyError("Response request not found")
         if row["status"] != "pending":
             raise ValueError("Response request has already been decided")
-        if row["requested_by"] == actor:
+        if row["requested_by"].strip().casefold() == actor_key:
             raise PermissionError("A different workspace member must approve or reject this request")
         db.execute("""UPDATE response_requests SET status=?,decided_by=?,decided_at=?,decision_note=?
           WHERE request_id=? AND status='pending'""",
-          ("approved" if approve else "rejected", str(actor)[:128], _now(), note.strip(), request_id))
+          ("approved" if approve else "rejected", actor_key, _now(), note.strip(), request_id))
         db.commit()
         updated = db.execute("SELECT * FROM response_requests WHERE request_id=?", (request_id,)).fetchone()
     return dict(updated)

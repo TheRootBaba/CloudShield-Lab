@@ -35,6 +35,10 @@ RULE_CATALOG = [
  {"id":"CS-SH-001","title":"AWS Security Hub finding imported","severity":"Provider","service":"Security Hub","events":["SecurityHubFinding"],"description":"Provider finding normalized into CloudShield."},
  {"id":"CS-AZ-IAM-001","title":"Azure role assignment changed","severity":"HIGH","service":"Azure RBAC","events":["Microsoft.Authorization/roleAssignments/write"],"description":"An Azure role assignment was created or updated; validate principal, role definition and scope."},
  {"id":"CS-AZ-AUDIT-001","title":"Azure Activity Log diagnostic settings deleted","severity":"HIGH","service":"Azure Monitor","events":["Microsoft.Insights/diagnosticSettings/delete"],"description":"A diagnostic setting was deleted; validate whether audit export coverage was weakened."},
+ {"id":"CS-AZ-NET-001","title":"Azure administrative network rule exposed publicly","severity":"CRITICAL","service":"Azure Network","events":["Microsoft.Network/networkSecurityGroups/securityRules/write"],"description":"An Azure network security rule permits SSH, RDP or all ports from an unrestricted source."},
+ {"id":"CS-AZ-STO-001","title":"Azure storage account public blob access enabled","severity":"HIGH","service":"Azure Storage","events":["Microsoft.Storage/storageAccounts/write"],"description":"A storage account allows anonymous blob access; verify account and container exposure."},
+ {"id":"CS-AZ-GOV-001","title":"Azure policy assignment deleted","severity":"HIGH","service":"Azure Policy","events":["Microsoft.Authorization/policyAssignments/delete"],"description":"A governance policy assignment was deleted; verify whether a required security control was removed."},
+ {"id":"CS-AZ-KV-001","title":"Azure Key Vault network access opened","severity":"HIGH","service":"Azure Key Vault","events":["Microsoft.KeyVault/vaults/write"],"description":"Key Vault network ACLs allow broad public network access; validate intended network boundaries."},
 ]
 IAM_MUTATION_EVENTS = set(RULE_CATALOG[0]["events"])
 def _as_list(value):
@@ -98,6 +102,33 @@ def analyze_event(event: CloudEvent) -> list[Finding]:
             findings.append(_make(event,"CS-AZ-AUDIT-001","Azure Activity Log diagnostic settings deleted","HIGH",
                 "A diagnostic setting was deleted. Verify whether subscription activity logs or resource logs have lost their export destination and restore approved coverage.",
                 {"operation":name,"resource_ids":list(event.resource_ids),"status":params.get("status")}))
+        properties = params.get("properties") if isinstance(params.get("properties"), dict) else params
+        if operation.endswith("microsoft.network/networksecuritygroups/securityrules/write") or operation.endswith("/securityrules/write"):
+            raw_sources = properties.get("sourceAddressPrefix") or properties.get("sourceAddressPrefixes") or []
+            raw_ports = properties.get("destinationPortRange") or properties.get("destinationPortRanges") or []
+            sources = [str(value).lower() for value in (raw_sources if isinstance(raw_sources, list) else [raw_sources])]
+            ports = [str(value).lower() for value in (raw_ports if isinstance(raw_ports, list) else [raw_ports])]
+            public_source = any(value in {"*", "internet", "0.0.0.0/0", "::/0"} or "0.0.0.0/0" in value for value in sources)
+            admin_port = any(value in {"*", "22", "3389"} for value in ports)
+            if public_source and admin_port:
+                findings.append(_make(event,"CS-AZ-NET-001","Azure administrative network rule exposed publicly","CRITICAL",
+                    "An Azure network security rule allows an unrestricted source to reach SSH, RDP or all destination ports. Confirm the effective NSG and restrict management access.",
+                    {"operation":name,"resource_ids":list(event.resource_ids),"sources":sources,"destination_ports":ports}))
+        if operation.endswith("microsoft.storage/storageaccounts/write") or operation.endswith("/storageaccounts/write"):
+            if properties.get("allowBlobPublicAccess") is True:
+                findings.append(_make(event,"CS-AZ-STO-001","Azure storage account public blob access enabled","HIGH",
+                    "The storage account configuration permits anonymous blob access. Confirm whether public containers exist and whether the setting is intentional.",
+                    {"operation":name,"resource_ids":list(event.resource_ids),"allow_blob_public_access":True}))
+        if operation.endswith("microsoft.authorization/policyassignments/delete") or operation.endswith("/policyassignments/delete"):
+            findings.append(_make(event,"CS-AZ-GOV-001","Azure policy assignment deleted","HIGH",
+                "An Azure Policy assignment was deleted. Verify whether a mandatory security baseline or deny control was removed.",
+                {"operation":name,"resource_ids":list(event.resource_ids)}))
+        if operation.endswith("microsoft.keyvault/vaults/write") or operation.endswith("/vaults/write"):
+            network = properties.get("networkAcls") or {}
+            if isinstance(network, dict) and str(network.get("defaultAction", "")).lower() == "allow":
+                findings.append(_make(event,"CS-AZ-KV-001","Azure Key Vault network access opened","HIGH",
+                    "Key Vault network ACLs use the Allow default action. Confirm that public network access is required and that private endpoints and firewall rules meet policy.",
+                    {"operation":name,"resource_ids":list(event.resource_ids),"network_acls":network}))
     if source == "securityhub.amazonaws.com" and name == "SecurityHubFinding":
         label=str(params.get("severity","UNKNOWN")).upper()
         mapped={"CRITICAL":"CRITICAL","HIGH":"HIGH","MEDIUM":"MEDIUM","LOW":"LOW","INFORMATIONAL":"INFO","INFO":"INFO"}.get(label)
@@ -112,7 +143,8 @@ def analyze_event(event: CloudEvent) -> list[Finding]:
     if source == "iam.amazonaws.com" and name in {"CreateAccessKey","CreateLoginProfile","UpdateLoginProfile"}:
         findings.append(_make(event,"CS-IAM-002","New IAM credential or console password created","HIGH",
             "A new long-lived credential or console password was created or changed. Confirm the request was authorized and rotate unexpected credentials.",
-            {"event_name":name,"request_parameters":params}))
+            {"event_name":name,"request_parameters":params,
+             "response_elements":event.raw.get("responseElements") or {}}))
     if source == "s3.amazonaws.com" and name == "PutBucketPolicy" and _is_public_bucket_policy(params):
         findings.append(_make(event,"CS-S3-001","Bucket policy grants access to a public principal","CRITICAL",
             "The policy allows a public principal to read objects or grants wildcard actions. Confirm whether public access is explicitly intended.",

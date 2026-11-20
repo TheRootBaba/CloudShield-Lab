@@ -21,11 +21,11 @@ class WorkerTests(unittest.TestCase):
             _record_heartbeat(db)
             conn = sqlite3.connect(db)
             try:
-                row = conn.execute("SELECT heartbeat_at FROM worker_heartbeat WHERE worker_id='primary'").fetchone()
+                row = conn.execute("SELECT heartbeat_at FROM worker_heartbeats WHERE worker_id='primary'").fetchone()
             finally:
                 conn.close()
             self.assertIsNotNone(row)
-            self.assertTrue(row[0].endswith("Z"))
+            self.assertTrue(row[0].endswith("+00:00"))
 
     def test_unconfigured_workspace_does_not_attempt_live_collection(self):
         with tempfile.TemporaryDirectory() as tmp:

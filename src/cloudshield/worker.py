@@ -58,16 +58,22 @@ def _mark_inventory(db_path: Path, provider: str) -> None:
         db.commit()
 
 
-def collect_workspace(db_path: str | Path, interval_seconds: int = 300) -> dict:
+def collect_workspace(db_path: str | Path, interval_seconds: int = 300, *, lease_heartbeat=None) -> dict:
     """Collect one bounded interval for one workspace; provider and inventory errors are isolated."""
     db_path = Path(db_path)
     results = {}
+
+    def renew_lease():
+        if lease_heartbeat is not None and not lease_heartbeat():
+            raise RuntimeError("Workspace collection lease was lost; stopping provider work")
     aws = cloud_ops.get_connection(db_path, "aws")
     if aws and aws["enabled"]:
         try:
+            renew_lease()
             session, config = cloud_ops.aws_session(db_path)
             lookback_minutes = max(15, min(1440, (int(interval_seconds) + 59) // 60 + 5))
             events = collect_cloudtrail(config["region"], lookback_minutes=lookback_minutes, max_pages=5, session=session)
+            renew_lease()
             counts = EvidenceStore(db_path).ingest(events["events"]) if events["events"] else {}
             cloud_ops.sync_alerts(db_path, _findings(db_path))
             cloud_ops.mark_provider(db_path, "aws", status="connected", collected=True)
@@ -78,7 +84,9 @@ def collect_workspace(db_path: str | Path, interval_seconds: int = 300) -> dict:
         else:
             if _inventory_due(db_path, "aws"):
                 try:
+                    renew_lease()
                     inventory = collect_aws_inventory([config["region"]], max_pages=1, session=session)
+                    renew_lease()
                     inventory["stored_resources"] = cloud_ops.store_inventory(db_path, "aws", inventory.get("resources", []))
                     results["aws_inventory"] = {"resources":inventory.get("resource_count",0),
                         "complete":inventory.get("collection_complete", inventory.get("complete",False))}
@@ -91,6 +99,7 @@ def collect_workspace(db_path: str | Path, interval_seconds: int = 300) -> dict:
     if azure and azure["enabled"]:
         credential = None
         try:
+            renew_lease()
             credential, config = cloud_ops.azure_credential(db_path)
             from azure.mgmt.monitor import MonitorManagementClient
             monitor = MonitorManagementClient(credential, config["subscription_id"],
@@ -98,6 +107,7 @@ def collect_workspace(db_path: str | Path, interval_seconds: int = 300) -> dict:
             lookback_hours = max(1, min(24, (int(interval_seconds) + 3599) // 3600 + 1))
             events = collect_activity_logs(config["subscription_id"], lookback_hours=lookback_hours,
                 max_pages=5, max_records=1000, monitor_client=monitor)
+            renew_lease()
             counts = EvidenceStore(db_path).ingest(events["events"]) if events["events"] else {}
             cloud_ops.sync_alerts(db_path, _findings(db_path))
             cloud_ops.mark_provider(db_path, "azure", status="connected", collected=True)
@@ -108,11 +118,13 @@ def collect_workspace(db_path: str | Path, interval_seconds: int = 300) -> dict:
         else:
             if _inventory_due(db_path, "azure"):
                 try:
+                    renew_lease()
                     from azure.mgmt.resource import ResourceManagementClient
                     resource_client = ResourceManagementClient(credential, config["subscription_id"],
                         retry_total=3, retry_backoff_factor=0.8, retry_backoff_max=8)
                     inventory = collect_azure_inventory(config["subscription_id"], max_pages=5,
                         max_records=1000, resource_client=resource_client)
+                    renew_lease()
                     inventory["stored_resources"] = cloud_ops.store_inventory(db_path, "azure", inventory.get("resources", []))
                     results["azure_inventory"] = {"resources":inventory.get("resource_count",0),
                         "complete":inventory.get("complete",False)}
@@ -134,12 +146,9 @@ def _findings(db_path: Path) -> list[dict]:
 
 
 
-def _record_heartbeat(auth_db: Path) -> None:
-    with closing(sqlite3.connect(str(auth_db))) as db:
-        db.execute("CREATE TABLE IF NOT EXISTS worker_heartbeat (worker_id TEXT PRIMARY KEY, heartbeat_at TEXT NOT NULL)")
-        db.execute("INSERT INTO worker_heartbeat VALUES('primary',?) ON CONFLICT(worker_id) DO UPDATE SET heartbeat_at=excluded.heartbeat_at",
-                   (time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),))
-        db.commit()
+def _record_heartbeat(auth_db: Path, worker_id: str = "primary", status: str = "running") -> None:
+    from .worker_coordination import record_heartbeat
+    record_heartbeat(auth_db, worker_id, status)
 
 def run_forever() -> None:
     auth_db = Path(os.environ.get("CLOUDSHIELD_AUTH_DB", "/data/auth.sqlite3"))
@@ -147,29 +156,51 @@ def run_forever() -> None:
     interval = int(os.environ.get("CLOUDSHIELD_COLLECTION_INTERVAL_SECONDS", "300"))
     if not 60 <= interval <= 3600:
         raise RuntimeError("CLOUDSHIELD_COLLECTION_INTERVAL_SECONDS must be 60–3600")
+    import socket
+    import uuid
+    from .worker_coordination import acquire_lease, renew_lease, release_lease, increment_counter
+    worker_id = (os.environ.get("CLOUDSHIELD_WORKER_ID") or f"{socket.gethostname()}-{os.getpid()}-{uuid.uuid4().hex[:8]}")[:128]
     signal.signal(signal.SIGTERM, _stop)
     signal.signal(signal.SIGINT, _stop)
-    print(f"CloudShield collection worker started; interval={interval}s")
+    print(f"CloudShield collection worker started; id={worker_id}; interval={interval}s")
     while not _STOP:
         started = time.monotonic()
         try:
-            _record_heartbeat(auth_db)
+            _record_heartbeat(auth_db, worker_id)
             for tenant_id, tenant_db in _tenant_databases(auth_db, tenant_root):
                 if _STOP:
                     break
-                if tenant_db.exists():
-                    result = collect_workspace(tenant_db, interval_seconds=interval)
+                if not tenant_db.exists():
+                    continue
+                lease_name = f"collect:{tenant_id}"
+                lease_ttl = min(3600, max(90, interval + 60))
+                if not acquire_lease(auth_db, lease_name, worker_id, ttl_seconds=lease_ttl):
+                    increment_counter(auth_db, "worker_lease_contention_total")
+                    continue
+                try:
+                    result = collect_workspace(
+                        tenant_db, interval_seconds=interval,
+                        lease_heartbeat=lambda: renew_lease(auth_db, lease_name, worker_id, ttl_seconds=lease_ttl),
+                    )
                     notifications = cloud_ops.deliver_alert_notifications(tenant_db, auth_db, tenant_id)
+                    increment_counter(auth_db, "worker_workspace_cycles_total")
                     if result or notifications.get("queued") or notifications.get("sent") or notifications.get("failed"):
                         print(f"Workspace {tenant_db.stem[:12]}: collection={result}; notifications={notifications}")
+                except Exception:
+                    increment_counter(auth_db, "worker_workspace_errors_total")
+                    raise
+                finally:
+                    release_lease(auth_db, lease_name, worker_id)
         except Exception as exc:
             # A worker-level error is visible in container logs; the next cycle retries.
             print(f"Worker cycle failed: {type(exc).__name__}: {exc}")
+            increment_counter(auth_db, "worker_cycle_errors_total")
         remaining = max(1, interval - int(time.monotonic() - started))
         for _ in range(remaining):
             if _STOP:
                 break
             time.sleep(1)
+    _record_heartbeat(auth_db, worker_id, "stopping")
 
 
 if __name__ == "__main__":

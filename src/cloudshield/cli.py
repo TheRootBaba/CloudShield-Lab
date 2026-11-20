@@ -100,6 +100,12 @@ def main(argv=None):
     rws.add_argument("file")
     rws.add_argument("--manifest")
     rws.add_argument("--destination", required=True)
+    rks = sub.add_parser("response-kill-switch", help="Enable or operator-disable the service-wide response kill switch")
+    rks.add_argument("--auth-database", default="artifacts/auth.sqlite3")
+    switch_group = rks.add_mutually_exclusive_group(required=True)
+    switch_group.add_argument("--enable", action="store_true")
+    switch_group.add_argument("--disable", action="store_true")
+    rks.add_argument("--confirm-disable")
     args = p.parse_args(argv)
 
     if args.command == "analyze":
@@ -184,6 +190,14 @@ def main(argv=None):
     elif args.command == "restore-workspaces":
         from .recovery import restore_workspace_set
         result = restore_workspace_set(args.file, args.destination, args.manifest)
+    elif args.command == "response-kill-switch":
+        if args.disable and args.confirm_disable != "DISABLE CLOUDSHIELD RESPONSE EXECUTION":
+            raise SystemExit('Disabling requires --confirm-disable "DISABLE CLOUDSHIELD RESPONSE EXECUTION"')
+        from .response_control import set_kill_switch
+        from .security import audit
+        actor = f"local-operator:{getpass.getuser()}"
+        result = set_kill_switch(args.auth_database, args.enable, actor, allow_disable=args.disable)
+        audit(args.auth_database, actor, "response.kill_switch", result["kill_switch"], "local-cli")
     elif args.command in {"azure-inventory", "azure-activity-logs"}:
         if os.environ.get("CLOUDSHIELD_ENABLE_AZURE_COLLECTION") != "1":
             raise SystemExit("Azure collection is disabled. Set CLOUDSHIELD_ENABLE_AZURE_COLLECTION=1 to explicitly opt in.")

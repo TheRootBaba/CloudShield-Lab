@@ -519,15 +519,20 @@ class Handler(BaseHTTPRequestHandler):
                             raise OSError("Authentication database is missing")
                         with closing(sqlite3.connect(str(auth_db), timeout=2)) as db:
                             db.execute("SELECT COUNT(*) FROM users").fetchone()
-                            heartbeat = db.execute("SELECT heartbeat_at FROM worker_heartbeat WHERE worker_id='primary'").fetchone() if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='worker_heartbeat'").fetchone() else None
+                            heartbeat = None
+                            if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='worker_heartbeats'").fetchone():
+                                heartbeat = db.execute("SELECT MAX(heartbeat_at) FROM worker_heartbeats WHERE status='running'").fetchone()
+                            if not heartbeat or not heartbeat[0]:
+                                heartbeat = db.execute("SELECT heartbeat_at FROM worker_heartbeat WHERE worker_id='primary'").fetchone() if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='worker_heartbeat'").fetchone() else None
+                            heartbeat_at = heartbeat[0] if heartbeat else None
                         worker_state = "not_started"
-                        if heartbeat:
+                        if heartbeat_at:
                             from datetime import datetime, timezone
-                            last = datetime.fromisoformat(heartbeat[0].replace("Z", "+00:00"))
+                            last = datetime.fromisoformat(heartbeat_at.replace("Z", "+00:00"))
                             interval = int(os.environ.get("CLOUDSHIELD_COLLECTION_INTERVAL_SECONDS", "300"))
                             worker_state = "running" if (datetime.now(timezone.utc) - last).total_seconds() <= interval * 3 else "stale"
                         payload = {"ok":worker_state == "running", "database":"ok", "worker":worker_state,
-                                   "worker_heartbeat_at":heartbeat[0] if heartbeat else None}
+                                   "worker_heartbeat_at":heartbeat_at}
                         return self._send(200 if worker_state == "running" else 503, payload)
                     _ensure_store()
                     return self._send(200, {"ok":True,"database":"ok","worker":"not_required"})
@@ -537,6 +542,17 @@ class Handler(BaseHTTPRequestHandler):
                 if _auth_enabled():
                     return self._send(200, {"ok": True, "service": "cloudshield-api"})
                 return self._send(200, {"ok": True, "service": "cloudshield-local-api", "database": str(_db_path()), "aws_collector_enabled": os.environ.get("CLOUDSHIELD_ENABLE_AWS_COLLECTOR") == "1"})
+            if path == "/api/metrics":
+                if _auth_enabled() and getattr(self, "_cloudshield_role", None) != "admin":
+                    return self._send(403, {"error":"Workspace administrator role required"})
+                auth_db = Path(os.environ.get("CLOUDSHIELD_AUTH_DB", str(ROOT / "artifacts" / "auth.sqlite3")))
+                from .worker_coordination import metrics_snapshot
+                counters = metrics_snapshot(auth_db) if auth_db.exists() else {}
+                from datetime import datetime, timedelta, timezone
+                worker_cutoff = (datetime.now(timezone.utc) - timedelta(seconds=int(os.environ.get("CLOUDSHIELD_COLLECTION_INTERVAL_SECONDS", "300")) * 3)).isoformat(timespec="seconds")
+                with closing(sqlite3.connect(str(auth_db), timeout=2)) as metrics_db:
+                    workers = metrics_db.execute("SELECT COUNT(*) FROM worker_heartbeats WHERE status='running' AND heartbeat_at>=?", (worker_cutoff,)).fetchone()[0] if metrics_db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='worker_heartbeats'").fetchone() else 0
+                return self._send(200, {"counters":counters, "running_workers":workers, "scope":"service-wide low-cardinality counters; no tenant labels"})
             if path == "/api/analytics":
                 window = parse_qs(parsed.query).get("window", ["24h"])[0]
                 return self._send(200, _analytics(window))
@@ -897,6 +913,39 @@ class Handler(BaseHTTPRequestHandler):
                     cloud_ops.mark_provider(_db_path(), "azure", status="connected", collected=True)
                 self._audit_mutation("azure.inventory.collect", subscription_id)
                 return self._send(200, result)
+            if self.path == "/api/responses/control/kill-switch":
+                if _auth_enabled() and (not session or session.role != "admin"):
+                    return self._send(403, {"error":"Workspace administrator role required"})
+                from .response_control import set_kill_switch
+                control_db = Path(os.environ.get("CLOUDSHIELD_AUTH_DB", str(ROOT / "artifacts" / "auth.sqlite3")))
+                result = set_kill_switch(control_db, body.get("enabled"), actor)
+                self._audit_mutation("response.kill_switch", result["kill_switch"])
+                return self._send(200, result)
+            if self.path.startswith("/api/responses/") and self.path.endswith("/dry-run"):
+                if _auth_enabled() and (not session or session.role not in {"admin", "responder"}):
+                    return self._send(403, {"error":"Responder or administrator role required"})
+                from .response_control import dry_run
+                request_id = self.path[len("/api/responses/"):-len("/dry-run")]
+                result = dry_run(_db_path(), request_id)
+                self._audit_mutation("response.dry_run", request_id)
+                return self._send(200, result)
+            if self.path.startswith("/api/responses/") and self.path.endswith("/execution-approval"):
+                if _auth_enabled() and (not session or session.role != "admin"):
+                    return self._send(403, {"error":"Independent workspace administrator approval required"})
+                from .response_control import approve_execution
+                request_id = self.path[len("/api/responses/"):-len("/execution-approval")]
+                result = approve_execution(_db_path(), request_id, actor)
+                self._audit_mutation("response.execution_approval", request_id)
+                return self._send(200, result)
+            if self.path.startswith("/api/responses/") and self.path.endswith("/execute"):
+                if _auth_enabled() and (not session or session.role != "admin"):
+                    return self._send(403, {"error":"Workspace administrator role required"})
+                # No production provider write adapter is registered in this build.
+                # Keep the HTTP execution surface explicitly unavailable rather than
+                # implying an approved request can mutate a cloud account.
+                request_id = self.path[len("/api/responses/"):-len("/execute")]
+                self._audit_mutation("response.execute.blocked", request_id)
+                return self._send(503, {"error":"No reviewed provider write adapter is installed; cloud execution remains disabled"})
             if self.path.startswith("/api/responses/") and self.path.endswith("/decision"):
                 if _auth_enabled() and (not session or session.role != "admin"):
                     return self._send(403, {"error":"Workspace administrator approval required"})

@@ -19,11 +19,15 @@ This inventory describes implemented event-pattern rules across AWS and Azure. I
 | CS-SH-001 | Security Hub | Imported finding records | Provider finding normalization |
 | CS-AZ-IAM-001 | Azure Activity Log | Microsoft.Authorization/roleAssignments/write | Azure RBAC role assignment mutation |
 | CS-AZ-AUDIT-001 | Azure Activity Log | Microsoft.Insights/diagnosticSettings/delete | Diagnostic/audit export setting deletion |
+| CS-AZ-NET-001 | Azure Activity Log | Microsoft.Network/networkSecurityGroups/securityRules/write | Internet source to SSH/RDP/all ports |
+| CS-AZ-STO-001 | Azure Activity Log | Microsoft.Storage/storageAccounts/write | Anonymous blob access setting enabled |
+| CS-AZ-GOV-001 | Azure Activity Log | Microsoft.Authorization/policyAssignments/delete | Governance policy assignment removed |
+| CS-AZ-KV-001 | Azure Activity Log | Microsoft.KeyVault/vaults/write | Key Vault network ACL default action set to Allow |
 
 ## Validation status
 
 - Curated ATT&CK references are attached to selected rules; mappings are coverage hypotheses, not proof of technique execution.
-- The current evaluation corpus includes 30 hand-labelled AWS/Azure positive/negative event shapes. All 30 currently pass against the 15 catalogued rules.
+- The current evaluation corpus includes 40 hand-labelled AWS/Azure positive/negative event shapes. All 40 currently pass against the 19 catalogued rules.
 - Fixture-only metrics are perfect on this small corpus by construction and must not be represented as production precision, recall or accuracy.
 
 ## Known blind spots

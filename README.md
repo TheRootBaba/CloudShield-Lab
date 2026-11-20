@@ -80,7 +80,7 @@ Legacy local mode supports optional API role tokens. For browser accounts and te
 
 **Do not expose the Python listener directly to a LAN or public network.** The production profile places Caddy HTTPS ingress in front of the private API and requires multi-user auth. It is a single-host deployment template, not an HA SaaS platform. Firebase email verification and password-reset flows are implemented but require Authentication initialization and provider enablement in the Firebase Console. Firebase TOTP and OIDC/SAML sign-in flows are implemented, but Firebase Identity Platform policy/provider configuration remains an operator task. Centralized metrics/on-call, external managed secrets/audit, independent penetration testing, offsite restore drills and live cloud validation remain release gates. Provider collectors use workspace-scoped identities; do not supply shared static cloud credentials.
 
-No cloud collection happens until a workspace administrator configures, tests and explicitly enables a read-only provider connection. Keep all connections disabled for the offline $0 setup. Cloud resource creation/remediation is not implemented. Terraform infrastructure roots remain separate and opt-in.
+No cloud collection happens until a workspace administrator configures, tests and explicitly enables a read-only provider connection. Keep all connections disabled for the offline $0 setup. Controlled response dry-runs, approval quorum, idempotency and a default-on kill switch are implemented, but no production provider write adapter is installed; cloud remediation remains disabled. Terraform infrastructure roots remain separate and opt-in.
 
 ## Phases 9-10: incident workflow and evidence bundles
 
@@ -94,7 +94,7 @@ See docs/PHASE_9_INCIDENT_RESPONSE.md and docs/PHASE_10_EVIDENCE_BUNDLES.md for 
 
 ## Detection evaluation (Phase 11)
 
-Run **cloudshield evaluate fixtures/detection_evaluation.json** to calculate per-rule and micro-averaged precision, recall, specificity and F1. The included 30-case labelled corpus currently passes 30/30 cases. These are deterministic fixture results only, not estimates of production false-positive or false-negative rates. See docs/PHASE_11_DETECTION_EVALUATION.md.
+Run **cloudshield evaluate fixtures/detection_evaluation.json** to calculate per-rule and micro-averaged precision, recall, specificity and F1. The included 40-case labelled corpus currently covers 19 AWS/Azure rules. These are deterministic fixture results only, not estimates of production false-positive or false-negative rates. See docs/PHASE_11_DETECTION_EVALUATION.md and docs/DETECTION_COVERAGE.md.
 
 ## Signed evidence bundles (Phase 12)
 
@@ -122,7 +122,7 @@ MIT License.
 
 ## Offline completion and handoff
 
-See docs/OFFLINE_COMPLETION.md for the offline verification snapshot. Phase 15–20 delivery and provider expansion are documented in docs/PHASES_15_20_REPORT.md and docs/PROVIDER_EXPANSION_REPORT.md. Browser authentication and tenant isolation are described in docs/MULTI_USER_AUTH.md; production ingress and workspace recovery are in docs/DEPLOYMENT_OPERATIONS.md and docs/FINALIZATION_RUNBOOK.md.
+See docs/OFFLINE_COMPLETION.md for the offline verification snapshot. Phase 15–20 delivery and provider expansion are documented in docs/PHASES_15_20_REPORT.md and docs/PROVIDER_EXPANSION_REPORT.md. Phase 21 cloud operations and Phases 23–26 implementation/acceptance status are documented in docs/NEXT_PHASES_DELIVERY_REPORT.md and docs/PHASES_23_26_IMPLEMENTATION_REPORT.md. Browser authentication and tenant isolation are described in docs/MULTI_USER_AUTH.md; production ingress and workspace recovery are in docs/DEPLOYMENT_OPERATIONS.md and docs/FINALIZATION_RUNBOOK.md.
 
 ## Containerized local run
 

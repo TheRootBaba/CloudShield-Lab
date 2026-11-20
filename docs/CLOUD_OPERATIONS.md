@@ -11,7 +11,7 @@ This document describes the tenant-scoped cloud integration and operational cont
 - All collector endpoints are administrator-only. Collection is read-only, bounded and uses SDK retry policies.
 - The collector worker is a separate Compose service. It reads each workspace's own provider config and evidence database; it does not use a shared customer credential.
 - The default polling interval is 300 seconds; allowed range is 60–3600 seconds. Event ingestion is idempotent. AWS lookback includes an overlap; Azure uses a bounded lookback. Inventory refresh runs every six hours and is deliberately incomplete.
-- No provider write, remediation, resource deletion or resource modification API is implemented.
+- No production provider write adapter is installed. The guarded response execution route returns HTTP 503 until a reviewed adapter is available; dry-run and approval records do not mutate cloud resources.
 
 ## AWS setup
 
@@ -98,12 +98,16 @@ docker compose --env-file .env.production -f compose.production.yaml -f compose.
 
 The overlay mounts the password as a Docker secret in the worker. Do not commit the password file or SMTP credentials. Delivery retries are bounded to five attempts with backoff.
 
-## Guided response workflow
+## Controlled response workflow (Phase 23 foundation)
 
-- A responder selects a HIGH/CRITICAL finding and chooses from finding-specific containment guidance.
-- A rationale is required and the request is recorded in the workspace database and security audit log.
-- A different workspace administrator must approve or reject it; self-approval is blocked.
-- Approval records intent only. **No AWS/Azure write adapter is enabled or implemented.** This is intentional until action-specific permissions, impact analysis, rollback, idempotency, kill switches and independent security review are complete.
+- A responder requests one action from the finding-specific catalogue; policy/trust findings and Azure findings without an action-specific plan do not receive unrelated remediation suggestions.
+- A workspace administrator makes the initial independent approve/reject decision. Requester self-approval is blocked.
+- `POST /api/responses/{request_id}/dry-run` builds a deterministic, expiring action plan. It reports exact resource IDs, inventory matches, unresolved targets, required permission, missing action parameters and blast radius. Dry-run never calls a provider.
+- Sensitive actions require two additional distinct administrator approvals tied to the exact plan digest. Neither the requester nor initial approver can supply these approvals.
+- `POST /api/responses/{request_id}/execution-approval` records an execution approval. `POST /api/responses/{request_id}/execute` requires an idempotency key, matching unexpired plan digest, resolved inventory targets, quorum, deployment opt-in and a service-wide kill switch that has been explicitly disabled.
+- The kill switch is stored in the shared auth database and is enabled by default. Any workspace administrator may set `enabled=true` through `POST /api/responses/control/kill-switch` to stop execution immediately. A tenant administrator cannot disable the service-wide switch. Only a local deployment operator can disable it with `cloudshield response-kill-switch --auth-database artifacts/auth.sqlite3 --disable --confirm-disable "DISABLE CLOUDSHIELD RESPONSE EXECUTION"`; re-enable it with the same command and `--enable`. The CLI writes a local security-audit record.
+- A failed or attempted request cannot be re-executed under a new idempotency key; it requires a new reviewed request. Execution history records result, failure code and adapter-supplied rollback metadata.
+- **No production AWS/Azure write adapter is registered in this build.** Execution therefore fails closed even if all approvals are present. The adapter contract is tested with a sandbox fake, but actual provider actions, automatic rollback and provider-specific permission policies require isolated cloud acceptance and independent review before adapters can be installed.
 
 ## MFA and SSO
 
@@ -139,4 +143,4 @@ No backup bucket has been applied and no offsite restore drill has been executed
 
 ## Production monitoring boundary
 
-The app exposes liveness at `/api/health` and database/worker readiness at `/api/health/ready`. The worker records a heartbeat in the auth database. Docker health checks restart unhealthy containers. These are useful operational signals, but they do not provide centralized logs, SLO dashboards, alert routing, multi-region failover or incident on-call coverage. Configure an external monitor for both health endpoints and alert on stale worker heartbeat, failed backups and SMTP delivery backlog.
+The app exposes liveness at `/api/health`, database/worker readiness at `/api/health/ready`, and administrator-only low-cardinality counters at `/api/metrics`. Collector replicas use shared-database per-workspace leases, owner-checked renewal around bounded provider operations, owner-checked release, expiry/reclaim, per-worker heartbeats and service-wide counters. The lease implementation is SQLite-backed and requires replicas to share a reliable database volume; it is not safe to place SQLite on an arbitrary network filesystem or use it as a multi-region coordination system. Move leases and durable jobs to PostgreSQL/a dedicated queue before multi-host scaling. Docker health checks restart unhealthy containers. These signals do not provide centralized log retention, SLO dashboards, pager routing, multi-region failover or on-call coverage. Configure an external monitor for health endpoints, worker lease contention, stale heartbeats, failed backups and SMTP delivery backlog.
