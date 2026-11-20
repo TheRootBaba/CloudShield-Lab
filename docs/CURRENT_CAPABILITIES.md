@@ -36,7 +36,7 @@ CloudShield is a local-first cloud security engineering lab. This document descr
 
 The Phase 23–26 implementation branch was locally verified with 188 Python tests, compilation, Bandit, the 40-case detection evaluation and the production dependency audit. GitHub Actions run #49 completed successfully with all four jobs passing: Python tests, Terraform, container build and web assets. See [the merged implementation PR](https://github.com/TheRootBaba/CloudShield-Lab/pull/13) and [its CI run](https://github.com/TheRootBaba/CloudShield-Lab/actions/runs/44648288567).
 
-The evidence screenshots and redacted demo in the repository are recordings of the local application using a synthetic lab dataset. They are product walkthrough evidence, not evidence of a live customer cloud integration.
+The repository screenshots show the local application using a synthetic lab dataset. They do not demonstrate a live customer cloud integration.
 
 ## External release gates
 

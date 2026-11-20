@@ -1,4 +1,3 @@
-5e59dde4b5131e3dd90595744819850b269070216cbb4e5e2e9597883616792f  evidence/media/cloudshield-demo-redacted.mp4
 5a377e1e74e4fa8db888d23a9ad1bc73f4a03a74f52f06f7821f1bf7f464abc2  evidence/media/01-command-center-overview.png
 86556bcb70eb0b553bd25d4fe51942c537e6ed2b58153664408a0375e23039f8  evidence/media/02-evidence-vault.png
 92901a445f53ef5cb049aab8c234be1412c14ab8fae41caaa0dba4940d70d1fd  evidence/media/03-alerts-and-response.png

@@ -7,7 +7,7 @@ CloudShield is a local-first cloud security lab. The roadmap tracks engineering 
 - **Phases 1–20:** detection pipeline, investigation workflow, evidence bundles, evaluation, tenant-aware authentication and provider adapters; see the engineering references in [the documentation index](INDEX.md).
 - **Phase 21:** workspace-scoped AWS/Azure connection configuration, scheduled bounded collection, alerting, response request/approval records and production foundations.
 - **Phases 23–26:** guarded response planning, approvals and kill switch; worker leasing and metrics; security-assurance preparation; expanded Azure detection rules.
-- **Phase 27:** documentation, architecture visuals, sanitized demo media, screenshot evidence, evidence manifest and public project presentation.
+- **Phase 27:** project documentation, architecture diagrams and screenshot evidence.
 
 ## Remaining acceptance milestones
 

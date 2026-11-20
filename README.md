@@ -25,10 +25,6 @@ More product evidence: [guided response request](evidence/media/04-guided-respon
 - **Collect safely:** bounded scheduled read-only polling, retry limits, inventory refresh and worker health signals.
 - **Control response:** action-specific dry runs, blast-radius reporting, approval quorum, idempotency and a default-on kill switch. Production cloud-write adapters are not installed; execution remains fail-closed.
 
-## Demo
-
-[Watch the redacted CloudShield walkthrough](evidence/media/cloudshield-demo-redacted.mp4) (102-second silent copy). The public copy removes browser chrome and obscures the signed-in identity and workspace-member details; source audio was omitted because it was not separately reviewed for spoken personal or confidential information. The original recording remains on the author's device.
-
 ## Quick start
 
 ### Local development
