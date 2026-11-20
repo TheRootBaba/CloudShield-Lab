@@ -19,6 +19,7 @@ This is the maintained entry point for operators, contributors, reviewers and ev
 
 ## Operator guides
 
+- [Operator quick start and first investigation](OPERATOR_QUICKSTART.md)
 - [Multi-user authentication and workspace isolation](MULTI_USER_AUTH.md)
 - [Firebase authentication](FIREBASE_AUTH.md)
 - [AWS and Azure provider configuration](CLOUD_OPERATIONS.md)

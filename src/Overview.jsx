@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   ResponsiveContainer, AreaChart, Area, CartesianGrid, XAxis, YAxis, Tooltip,
   BarChart, Bar, PieChart, Pie, Cell
@@ -58,6 +58,7 @@ export default function Overview({
     : 'No heartbeat reported';
 
   return <div className="overview">
+    <SetupGuide providers={providers} events={dashboard.events_total} findings={dashboard.findings_total} go={go} onRunSimulation={onRunSimulation} onImport={onImport} busy={busy}/>
     <section className="readiness-panel" aria-label="Environment readiness">
       <div className="readiness-heading">
         <div><span className="overline">ENVIRONMENT STATUS</span><h2>Collection readiness</h2></div>
@@ -166,4 +167,34 @@ export default function Overview({
       </div>
     </div>
   </div>;
+}
+function SetupGuide({ providers, events, findings, go, onRunSimulation, onImport, busy }) {
+  const [dismissed, setDismissed] = useState(() => {
+    try { return window.localStorage.getItem('cloudshield.setup-guide.dismissed') === '1'; }
+    catch { return false; }
+  });
+  const [expanded, setExpanded] = useState(true);
+  const connected = providers.some(item => item.status === 'connected');
+  const configured = providers.some(item => item.configured || item.enabled);
+  const steps = [
+    { title: 'Connect a cloud data source', detail: 'Configure a workspace-scoped AWS or Azure read-only identity.', done: connected, action: () => go('data-sources'), actionLabel: 'Configure source' },
+    { title: 'Collect or import audit events', detail: 'Use an offline scenario or import supported provider audit records.', done: Number(events) > 0, action: onImport, actionLabel: 'Import events' },
+    { title: 'Review detection coverage', detail: 'Inspect rule logic, severity and known coverage limitations.', done: Number(findings) > 0, action: () => go('rules'), actionLabel: 'Review rules' },
+    { title: 'Investigate and preserve evidence', detail: 'Review incidents and verify exported evidence bundles.', done: Number(findings) > 0, action: () => go('evidence'), actionLabel: 'Open evidence' }
+  ];
+  const completed = steps.filter(step => step.done).length;
+  if (dismissed) return <button className="setup-guide-reopen" onClick={() => { setDismissed(false); setExpanded(true); }}>Show workspace setup guide <ArrowRight size={14}/></button>;
+  return <section className="setup-guide" aria-label="Workspace onboarding">
+    <div className="setup-guide-head">
+      <div><span className="overline">GETTING STARTED</span><h2>Set up your security workspace</h2><p>Complete these steps to move from an empty lab to an evidence-backed investigation workflow.</p></div>
+      <div className="setup-guide-progress"><b>{completed}/4</b><small>STEPS COMPLETE</small><div><i style={{width:(completed/4*100)+'%'}}/></div></div>
+    </div>
+    <div className="setup-guide-track"><div className="setup-guide-track-fill" style={{width:(completed/4*100)+'%'}}/></div>
+    {expanded && <div className="setup-guide-steps">{steps.map((step,index) => <article className={'setup-step '+(step.done?'is-done':'')} key={step.title}>
+      <span className="setup-step-number">{step.done?<CheckCircle2 size={17}/>:String(index+1).padStart(2,'0')}</span>
+      <div className="setup-step-copy"><b>{step.title}</b><small>{step.detail}</small></div>
+      {step.done ? <span className="setup-step-status">Complete</span> : <button onClick={step.action}>{step.actionLabel}<ArrowUpRight size={13}/></button>}
+    </article>)}</div>}
+    <div className="setup-guide-foot"><button className="setup-guide-toggle" onClick={() => setExpanded(value => !value)}>{expanded?'Collapse guide':'Expand guide'}</button><div><button className="setup-guide-sim" onClick={onRunSimulation} disabled={busy}><Play size={13}/>Try offline simulation</button><button className="setup-guide-dismiss" onClick={() => { try { window.localStorage.setItem('cloudshield.setup-guide.dismissed','1'); } catch {} setDismissed(true); }}>Dismiss</button></div></div>
+  </section>;
 }

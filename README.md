@@ -27,6 +27,8 @@ More product evidence: [guided response request](evidence/media/04-guided-respon
 
 ## Quick start
 
+For the complete first-run workflow, see the [operator quick start](docs/OPERATOR_QUICKSTART.md).
+
 ### Local development
 
 ~~~powershell
