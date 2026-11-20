@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="760" viewBox="0 0 1400 760" role="img" aria-labelledby="title desc">
+<title id="title">CloudShield phases 28 to 31 acceptance gates</title>
+<desc id="desc">Four sequential acceptance gates: live providers, guarded response, distributed operations, and independent assurance. Each gate requires external evidence before production release.</desc>
+<defs>
+  <style>
+    .bg{fill:#f6f8fc}.panel{fill:#fff;stroke:#cbd5e1;stroke-width:2}.num{fill:#1d4ed8}.head{font:700 25px Arial,sans-serif;fill:#10213b}.sub{font:16px Arial,sans-serif;fill:#42536b}.small{font:14px Arial,sans-serif;fill:#52647b}.gate{fill:#fff7ed;stroke:#fb923c;stroke-width:2}.line{stroke:#64748b;stroke-width:3;fill:none}.foot{font:700 18px Arial,sans-serif;fill:#9a3412}
+  </style>
+</defs>
+<rect class="bg" width="1400" height="760" rx="24"/>
+<text x="70" y="76" class="head" style="font-size:34px">CloudShield — remaining release gates</text>
+<text x="70" y="112" class="sub">Engineering preparation is present; external acceptance is still required for production claims.</text>
+<g transform="translate(70 170)">
+  <rect class="panel" width="285" height="390" rx="18"/>
+  <circle class="num" cx="42" cy="44" r="23"/><text x="42" y="52" text-anchor="middle" fill="#fff" font="700 22px Arial">28</text>
+  <text class="head" x="28" y="105">Live providers</text>
+  <text class="sub" x="28" y="145">AWS AssumeRole</text><text class="sub" x="28" y="172">Azure workload identity</text>
+  <text class="small" x="28" y="225">Tenant binding • least privilege</text><text class="small" x="28" y="251">Bounded collection • cleanup</text>
+  <rect class="gate" x="20" y="300" width="245" height="62" rx="10"/><text class="foot" x="142" y="337" text-anchor="middle">Sandbox sign-off</text>
+</g>
+<path class="line" d="M365 365 H395 l-12 -9 m12 9 l-12 9"/>
+<g transform="translate(405 170)">
+  <rect class="panel" width="285" height="390" rx="18"/>
+  <circle class="num" cx="42" cy="44" r="23"/><text x="42" y="52" text-anchor="middle" fill="#fff" font="700 22px Arial">29</text>
+  <text class="head" x="28" y="105">Response adapters</text>
+  <text class="sub" x="28" y="145">Narrow action allowlists</text><text class="sub" x="28" y="172">Preconditions + quorum</text>
+  <text class="small" x="28" y="225">Dry-run parity • idempotency</text><text class="small" x="28" y="251">Rollback • kill switch</text>
+  <rect class="gate" x="20" y="300" width="245" height="62" rx="10"/><text class="foot" x="142" y="337" text-anchor="middle">Independent drill</text>
+</g>
+<path class="line" d="M700 365 H730 l-12 -9 m12 9 l-12 9"/>
+<g transform="translate(740 170)">
+  <rect class="panel" width="285" height="390" rx="18"/>
+  <circle class="num" cx="42" cy="44" r="23"/><text x="42" y="52" text-anchor="middle" fill="#fff" font="700 22px Arial">30</text>
+  <text class="head" x="28" y="105">Distributed ops</text>
+  <text class="sub" x="28" y="145">Durable queue / DB</text><text class="sub" x="28" y="172">Central monitoring + paging</text>
+  <text class="small" x="28" y="225">Load • failover • SLOs</text><text class="small" x="28" y="251">Off-host backup + restore</text>
+  <rect class="gate" x="20" y="300" width="245" height="62" rx="10"/><text class="foot" x="142" y="337" text-anchor="middle">Witnessed recovery</text>
+</g>
+<path class="line" d="M1035 365 H1065 l-12 -9 m12 9 l-12 9"/>
+<g transform="translate(1075 170)">
+  <rect class="panel" width="255" height="390" rx="18"/>
+  <circle class="num" cx="42" cy="44" r="23"/><text x="42" y="52" text-anchor="middle" fill="#fff" font="700 22px Arial">31</text>
+  <text class="head" x="28" y="105">Independent assurance</text>
+  <text class="sub" x="28" y="145">Pen test + tenant isolation</text><text class="sub" x="28" y="172">Detection quality baseline</text>
+  <text class="small" x="28" y="225">Critical/high retest</text><text class="small" x="28" y="251">Labelled telemetry metrics</text>
+  <rect class="gate" x="18" y="300" width="219" height="62" rx="10"/><text class="foot" x="127" y="337" text-anchor="middle">Signed assessment</text>
+</g>
+<rect x="70" y="620" width="1260" height="78" rx="14" fill="#fff1f2" stroke="#fda4af" stroke-width="2"/>
+<text x="95" y="667" font="700 21px Arial" fill="#9f1239">Release rule:</text>
+<text x="235" y="667" font="18px Arial" fill="#881337">Keep cloud writes disabled and production certification claims gated until external evidence is accepted.</text>
+</svg>

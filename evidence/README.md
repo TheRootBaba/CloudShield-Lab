@@ -14,6 +14,10 @@ This directory contains intentional, reviewable project evidence. It does not co
 | media/05-tenant-scoped-cloud-connections.png | Frame from the local walkthrough, 82 seconds | AWS AssumeRole and Azure managed/workload identity configuration |
 | screenshots/sign-in-screen.png | Fresh headless capture of the local HTTPS sign-in screen | Sign-in experience without an authenticated user identity |
 
+## Additional acceptance evidence
+
+See [acceptance evidence](acceptance/README.md) for the local verification JSON, rendered Phase 28-31 gate visual and SHA-256 manifest. These artifacts do not replace live-provider or independent-assurance evidence.
+
 ## Privacy and data classification
 
 The original recording contained a signed-in display name and email address in the workspace-members dialog. The public copy applies privacy redactions to the signed-in identity area throughout the video and to the member row where it appears, and crops the browser chrome. The source recording also contains an audio track; audio is intentionally omitted from the public copy because it was not separately reviewed for spoken personal or confidential information. The original recording remains in the author's Documents folder and is not committed.

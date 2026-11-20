@@ -34,8 +34,11 @@ This is the maintained entry point for operators, contributors, reviewers and ev
 - [Threat model](THREAT_MODEL.md)
 - [Detection rules and coverage](DETECTION_COVERAGE.md)
 - [Engineering roadmap](ROADMAP.md)
+- [Phases 28-31 acceptance plan](PHASES_28_31_ACCEPTANCE_PLAN.md)
+- [Phases 28-31 acceptance-gate diagram](diagrams/phase-28-31-acceptance.svg)
 - [Phases 23–26 implementation and acceptance record](PHASES_23_26_IMPLEMENTATION_REPORT.md)
 - [Evidence and demo assets](../evidence/README.md)
+- [Acceptance evidence and local verification capture](../evidence/acceptance/README.md)
 
 ## Release discipline
 
