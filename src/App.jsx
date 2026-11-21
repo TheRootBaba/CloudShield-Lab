@@ -19,16 +19,16 @@ const NAV=[
  {group:'WORKSPACE',items:[['overview','Overview',LayoutDashboard],['incidents','Incidents',AlertTriangle],['detections','Detections',ScanLine],['attack-paths','Attack paths',Network],['evidence','Evidence vault',Fingerprint],['operations','Alerts & response',Bell],['security','Account security',Fingerprint]]},
  {group:'CONFIGURATION',items:[['assets','Asset inventory',Server],['data-sources','Data sources',RadioTower],['rules','Detection library',SlidersHorizontal]]}
 ];
-const PALETTE={CRITICAL:'#ff7186',HIGH:'#f3b86b',MEDIUM:'#e9d978',LOW:'#a6f27a',INFO:'#71c8f5'};
+const PALETTE={CRITICAL:'#c8495c',HIGH:'#b77a2c',MEDIUM:'#9b8737',LOW:'#348466',INFO:'#4779c8'};
 const cx=(...v)=>v.filter(Boolean).join(' ');
 const fmt=(v,opts={})=>{if(!v)return '—';const d=new Date(v);return Number.isNaN(+d)?String(v):d.toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',...opts})};
 const compact=n=>Number(n||0).toLocaleString();
 const safe=(v)=>String(v??'—');
 function cookieValue(name){return document.cookie.split('; ').find(v=>v.startsWith(name+'='))?.slice(name.length+1)||''}
 async function request(path,options={}){const method=(options.method||'GET').toUpperCase(),csrf=cookieValue('cloudshield_csrf');const headers={'Content-Type':'application/json',...(options.headers||{})};if(['POST','PATCH','PUT','DELETE'].includes(method)&&csrf)headers['X-CSRF-Token']=decodeURIComponent(csrf);const res=await fetch(API+path,{...options,credentials:'same-origin',headers});const body=await res.json().catch(()=>({error:'Unexpected API response'}));if(!res.ok){const error=new Error(body.error||res.statusText);error.status=res.status;throw error}return body;}
-function Brand(){return <div className="brand"><div className="brand-mark"><svg viewBox="0 0 48 48" aria-hidden="true"><defs><linearGradient id="cs-shield" x1="5" y1="4" x2="43" y2="45"><stop stopColor="#d7ffb9"/><stop offset="1" stopColor="#69c9ed"/></linearGradient></defs><path d="M24 3.5 41 10v13.1c0 10.3-6.8 17.4-17 21.4C13.8 40.5 7 33.4 7 23.1V10L24 3.5Z" fill="#15271f" stroke="url(#cs-shield)" strokeWidth="1.5"/><path d="M13 23.5h7l3.1-7.1 5.1 15.2 3.2-8.1H36" fill="none" stroke="#b8f58f" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/><circle cx="24" cy="24" r="18.5" fill="none" stroke="#8bd8e8" strokeOpacity=".16"/></svg></div><div className="brand-copy"><b>Cloud<span>Shield</span></b><small>SECURITY OPERATIONS</small></div></div>}
+function Brand(){return <div className="brand"><div className="brand-mark"><img src="/cloudshield-mark.svg" alt=""/></div><div className="brand-copy"><b>Cloud<span>Shield</span></b><small>SECURITY OPERATIONS</small></div></div>}
 function Severity({value}){const s=(value||'INFO').toUpperCase();return <span className={'severity sev-'+s.toLowerCase()}><i/>{s}</span>}
-function Metric({label,value,sub,icon:Icon,tone='mint',delta}){return <motion.article className={'metric metric-'+tone} initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} transition={{duration:.35}}><div className="metric-head"><span>{label}</span><span className="metric-icon"><Icon size={17}/></span></div><div className="metric-number">{compact(value)}</div><div className="metric-foot"><span>{sub}</span>{delta&&<em>{delta}</em>}</div></motion.article>}
+import { MetricCard as Metric } from './components/ui.jsx';
 function Empty({icon:Icon=Database,title='Nothing here yet',desc='Import telemetry or run an offline simulation to populate this view.'}){return <div className="empty-state"><div className="empty-icon"><Icon size={22}/></div><b>{title}</b><p>{desc}</p></div>}
 
 function App(){

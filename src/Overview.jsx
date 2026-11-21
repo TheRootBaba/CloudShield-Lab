@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { MetricCard as Metric, SectionHeading } from './components/ui.jsx';
 import {
   ResponsiveContainer, AreaChart, Area, CartesianGrid, XAxis, YAxis, Tooltip,
   BarChart, Bar, PieChart, Pie, Cell
@@ -14,14 +15,6 @@ function ChartTip({ active, payload, label }) {
   return <div className="chart-tip"><small>{label}</small>{payload.map((item, index) =>
     <div key={index}><i style={{ background: item.color }} />{item.name}: <b>{item.value}</b></div>
   )}</div>;
-}
-
-function Metric({ label, value, sub, icon: Icon, tone = 'mint' }) {
-  return <article className={'metric metric-' + tone}>
-    <div className="metric-head"><span>{label}</span><span className="metric-icon"><Icon size={17}/></span></div>
-    <div className="metric-number">{Number(value || 0).toLocaleString()}</div>
-    <div className="metric-foot"><span>{sub}</span></div>
-  </article>;
 }
 
 function ProviderStatus({ provider, onManage }) {
@@ -78,18 +71,18 @@ export default function Overview({
       <div className="command-hero-visual" aria-hidden="true">
         <div className="hero-grid-texture"/>
         <svg className="hero-network" viewBox="0 0 440 340" fill="none">
-          <defs><linearGradient id="heroStroke" x1="68" y1="45" x2="365" y2="300"><stop stopColor="#a6f27a"/><stop offset="1" stopColor="#71c8f5"/></linearGradient><radialGradient id="heroGlow"><stop stopColor="#a6f27a" stopOpacity=".25"/><stop offset="1" stopColor="#a6f27a" stopOpacity="0"/></radialGradient></defs>
+          <defs><linearGradient id="heroStroke" x1="68" y1="45" x2="365" y2="300"><stop stopColor="#3269d8"/><stop offset="1" stopColor="#54a7a0"/></linearGradient><radialGradient id="heroGlow"><stop stopColor="#4b82df" stopOpacity=".18"/><stop offset="1" stopColor="#4b82df" stopOpacity="0"/></radialGradient></defs>
           <circle cx="242" cy="164" r="146" stroke="#8da8bd" strokeOpacity=".12" strokeDasharray="2 8"/>
           <circle cx="242" cy="164" r="112" stroke="#8da8bd" strokeOpacity=".2"/>
           <circle cx="242" cy="164" r="77" stroke="#8da8bd" strokeOpacity=".16" strokeDasharray="3 7"/>
           <circle cx="242" cy="164" r="54" fill="url(#heroGlow)"/>
           <path d="M89 223 151 172 201 196 245 116 306 139 367 76M151 172 166 89 245 116M201 196 218 268 306 241 367 76M245 116 306 241" stroke="url(#heroStroke)" strokeOpacity=".72" strokeWidth="1.4"/>
-          <path d="M242 164 245 116M242 164 201 196M242 164 306 139" stroke="#d9f9c7" strokeOpacity=".4" strokeDasharray="3 5"/>
-          <circle cx="242" cy="164" r="31" fill="#17291f" stroke="#a6f27a" strokeOpacity=".8"/>
-          <path d="M242 143 258 149v12c0 9-6.5 15-16 19-9.5-4-16-10-16-19v-12l16-6Z" stroke="#c5f7a7" strokeWidth="1.5"/>
-          <path d="m234 163 6 6 11-13" stroke="#c5f7a7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          <g fill="#a6f27a" stroke="#0e1a24" strokeWidth="4"><circle cx="89" cy="223" r="6"/><circle cx="151" cy="172" r="5"/><circle cx="166" cy="89" r="5"/><circle cx="201" cy="196" r="6"/><circle cx="245" cy="116" r="6"/><circle cx="306" cy="139" r="5"/><circle cx="306" cy="241" r="5"/></g>
-          <circle cx="367" cy="76" r="7" fill="#71c8f5" stroke="#10202d" strokeWidth="4"/>
+          <path d="M242 164 245 116M242 164 201 196M242 164 306 139" stroke="#d4e3fb" strokeOpacity=".4" strokeDasharray="3 5"/>
+          <circle cx="242" cy="164" r="31" fill="#ffffff" stroke="#3269d8" strokeOpacity=".8"/>
+          <path d="M242 143 258 149v12c0 9-6.5 15-16 19-9.5-4-16-10-16-19v-12l16-6Z" stroke="#3269d8" strokeWidth="1.5"/>
+          <path d="m234 163 6 6 11-13" stroke="#3269d8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          <g fill="#3269d8" stroke="#ffffff" strokeWidth="4"><circle cx="89" cy="223" r="6"/><circle cx="151" cy="172" r="5"/><circle cx="166" cy="89" r="5"/><circle cx="201" cy="196" r="6"/><circle cx="245" cy="116" r="6"/><circle cx="306" cy="139" r="5"/><circle cx="306" cy="241" r="5"/></g>
+          <circle cx="367" cy="76" r="7" fill="#54a7a0" stroke="#ffffff" strokeWidth="4"/>
         </svg>
         <div className="hero-visual-caption"><span className="hero-caption-dot"/><span>TELEMETRY GRAPH</span><b>OBSERVED RELATIONSHIPS</b></div>
         <div className="hero-float-card hero-float-top"><span>COLLECTION</span><b>{providers.some(item => item.status === 'connected') ? 'Connected source' : 'Awaiting source'}</b></div>
@@ -153,21 +146,19 @@ export default function Overview({
 
     <div className="analytics-grid">
       <section className="panel activity-panel">
-        <div className="panel-head"><div><span className="overline">TELEMETRY OVER TIME</span><h2>Event activity</h2><p>Observed events and finding matches in the selected window.</p></div>
-          <select className="range-select" value={range} onChange={event => setRange(event.target.value)}>
+        <SectionHeading eyebrow="TELEMETRY OVER TIME" title="Event activity" description="Observed events and finding matches in the selected window." action={<select className="range-select" value={range} onChange={event => setRange(event.target.value)}>
             <option value="1h">Last hour</option><option value="24h">24 hours</option><option value="7d">7 days</option><option value="all">All time</option>
-          </select>
-        </div>
+          </select>}/>
         <div className="chart-legend"><span><i className="legend-mint"/>Events</span><span><i className="legend-blue"/>Finding matches</span><b>{Number(events || 0).toLocaleString()} observed</b></div>
         <div className="chart-area">{activity.some(item => item.events) ?
           <ResponsiveContainer width="100%" height="100%"><AreaChart data={activity} margin={{top:12,right:12,left:-20,bottom:0}}>
-            <defs><linearGradient id="eventFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#a6f27a" stopOpacity={.24}/><stop offset="100%" stopColor="#a6f27a" stopOpacity={0}/></linearGradient></defs>
-            <CartesianGrid stroke="#26374a" strokeDasharray="3 6" vertical={false}/>
+            <defs><linearGradient id="eventFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#3d83d9" stopOpacity={.2}/><stop offset="100%" stopColor="#3d83d9" stopOpacity={0}/></linearGradient></defs>
+            <CartesianGrid stroke="#e8edf3" strokeDasharray="3 6" vertical={false}/>
             <XAxis dataKey="label" tick={{fill:'#8b99a9',fontSize:11}} axisLine={false} tickLine={false} minTickGap={24}/>
             <YAxis tick={{fill:'#8b99a9',fontSize:11}} axisLine={false} tickLine={false} allowDecimals={false}/>
             <Tooltip content={<ChartTip/>}/>
-            <Area type="monotone" dataKey="events" name="Events" stroke="#a6f27a" strokeWidth={2.5} fill="url(#eventFill)" activeDot={{r:5,strokeWidth:0}}/>
-            <Area type="monotone" dataKey="findings" name="Findings" stroke="#71c8f5" strokeWidth={2} fill="transparent" activeDot={{r:4}}/>
+            <Area type="monotone" dataKey="events" name="Events" stroke="#368a7c" strokeWidth={2.5} fill="url(#eventFill)" activeDot={{r:5,strokeWidth:0}}/>
+            <Area type="monotone" dataKey="findings" name="Findings" stroke="#4b7fd4" strokeWidth={2} fill="transparent" activeDot={{r:4}}/>
           </AreaChart></ResponsiveContainer> : <Empty icon={ChartNoAxesCombined} title="Waiting for telemetry" desc="Run a simulation or import events to populate the activity chart."/>}
         </div>
         <div className="panel-note"><span><i className="pulse-dot"/>Data from stored event timestamps</span><span>No synthetic projections</span></div>
