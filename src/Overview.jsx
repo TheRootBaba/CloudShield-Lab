@@ -58,6 +58,44 @@ export default function Overview({
     : 'No heartbeat reported';
 
   return <div className="overview">
+    <section className="command-hero" aria-label="Cloud security workspace">
+      <div className="command-hero-copy">
+        <span className="command-hero-kicker"><i/> EVIDENCE-LED CLOUD DEFENSE <span> / </span> WORKSPACE 01</span>
+        <h2>See the signal.<br/><em>Understand the risk.</em></h2>
+        <p>Cloud telemetry, detection context and verifiable evidence — brought into one focused operations workspace.</p>
+        <div className="command-hero-actions">
+          <button className="button button-primary" onClick={() => go('incidents')}>Open incident queue <ArrowUpRight size={15}/></button>
+          <button className="command-hero-secondary" onClick={() => go('data-sources')}>Manage cloud sources <ArrowRight size={14}/></button>
+        </div>
+        <div className="command-hero-stats">
+          <div><b>{Number(dashboard.events_total || 0).toLocaleString()}</b><small>EVENTS OBSERVED</small></div>
+          <span/>
+          <div><b>{Number(dashboard.findings_total || 0).toLocaleString()}</b><small>DETECTION SIGNALS</small></div>
+          <span/>
+          <div><b>{Number(dashboard.incidents_total || 0).toLocaleString()}</b><small>INCIDENTS</small></div>
+        </div>
+      </div>
+      <div className="command-hero-visual" aria-hidden="true">
+        <div className="hero-grid-texture"/>
+        <svg className="hero-network" viewBox="0 0 440 340" fill="none">
+          <defs><linearGradient id="heroStroke" x1="68" y1="45" x2="365" y2="300"><stop stopColor="#a6f27a"/><stop offset="1" stopColor="#71c8f5"/></linearGradient><radialGradient id="heroGlow"><stop stopColor="#a6f27a" stopOpacity=".25"/><stop offset="1" stopColor="#a6f27a" stopOpacity="0"/></radialGradient></defs>
+          <circle cx="242" cy="164" r="146" stroke="#8da8bd" strokeOpacity=".12" strokeDasharray="2 8"/>
+          <circle cx="242" cy="164" r="112" stroke="#8da8bd" strokeOpacity=".2"/>
+          <circle cx="242" cy="164" r="77" stroke="#8da8bd" strokeOpacity=".16" strokeDasharray="3 7"/>
+          <circle cx="242" cy="164" r="54" fill="url(#heroGlow)"/>
+          <path d="M89 223 151 172 201 196 245 116 306 139 367 76M151 172 166 89 245 116M201 196 218 268 306 241 367 76M245 116 306 241" stroke="url(#heroStroke)" strokeOpacity=".72" strokeWidth="1.4"/>
+          <path d="M242 164 245 116M242 164 201 196M242 164 306 139" stroke="#d9f9c7" strokeOpacity=".4" strokeDasharray="3 5"/>
+          <circle cx="242" cy="164" r="31" fill="#17291f" stroke="#a6f27a" strokeOpacity=".8"/>
+          <path d="M242 143 258 149v12c0 9-6.5 15-16 19-9.5-4-16-10-16-19v-12l16-6Z" stroke="#c5f7a7" strokeWidth="1.5"/>
+          <path d="m234 163 6 6 11-13" stroke="#c5f7a7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          <g fill="#a6f27a" stroke="#0e1a24" strokeWidth="4"><circle cx="89" cy="223" r="6"/><circle cx="151" cy="172" r="5"/><circle cx="166" cy="89" r="5"/><circle cx="201" cy="196" r="6"/><circle cx="245" cy="116" r="6"/><circle cx="306" cy="139" r="5"/><circle cx="306" cy="241" r="5"/></g>
+          <circle cx="367" cy="76" r="7" fill="#71c8f5" stroke="#10202d" strokeWidth="4"/>
+        </svg>
+        <div className="hero-visual-caption"><span className="hero-caption-dot"/><span>TELEMETRY GRAPH</span><b>OBSERVED RELATIONSHIPS</b></div>
+        <div className="hero-float-card hero-float-top"><span>COLLECTION</span><b>{providers.some(item => item.status === 'connected') ? 'Connected source' : 'Awaiting source'}</b></div>
+        <div className="hero-float-card hero-float-bottom"><span>RESPONSE MODE</span><b><LockKeyhole size={12}/> Read-only by default</b></div>
+      </div>
+    </section>
     <SetupGuide providers={providers} events={dashboard.events_total} findings={dashboard.findings_total} go={go} onRunSimulation={onRunSimulation} onImport={onImport} busy={busy}/>
     <section className="readiness-panel" aria-label="Environment readiness">
       <div className="readiness-heading">
@@ -123,13 +161,13 @@ export default function Overview({
         <div className="chart-legend"><span><i className="legend-mint"/>Events</span><span><i className="legend-blue"/>Finding matches</span><b>{Number(events || 0).toLocaleString()} observed</b></div>
         <div className="chart-area">{activity.some(item => item.events) ?
           <ResponsiveContainer width="100%" height="100%"><AreaChart data={activity} margin={{top:12,right:12,left:-20,bottom:0}}>
-            <defs><linearGradient id="eventFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#3478d4" stopOpacity={.26}/><stop offset="100%" stopColor="#3478d4" stopOpacity={0}/></linearGradient></defs>
-            <CartesianGrid stroke="#e8edf3" strokeDasharray="3 6" vertical={false}/>
+            <defs><linearGradient id="eventFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#a6f27a" stopOpacity={.24}/><stop offset="100%" stopColor="#a6f27a" stopOpacity={0}/></linearGradient></defs>
+            <CartesianGrid stroke="#26374a" strokeDasharray="3 6" vertical={false}/>
             <XAxis dataKey="label" tick={{fill:'#8b99a9',fontSize:11}} axisLine={false} tickLine={false} minTickGap={24}/>
             <YAxis tick={{fill:'#8b99a9',fontSize:11}} axisLine={false} tickLine={false} allowDecimals={false}/>
             <Tooltip content={<ChartTip/>}/>
-            <Area type="monotone" dataKey="events" name="Events" stroke="#3478d4" strokeWidth={2.5} fill="url(#eventFill)" activeDot={{r:5,strokeWidth:0}}/>
-            <Area type="monotone" dataKey="findings" name="Findings" stroke="#168a78" strokeWidth={2} fill="transparent" activeDot={{r:4}}/>
+            <Area type="monotone" dataKey="events" name="Events" stroke="#a6f27a" strokeWidth={2.5} fill="url(#eventFill)" activeDot={{r:5,strokeWidth:0}}/>
+            <Area type="monotone" dataKey="findings" name="Findings" stroke="#71c8f5" strokeWidth={2} fill="transparent" activeDot={{r:4}}/>
           </AreaChart></ResponsiveContainer> : <Empty icon={ChartNoAxesCombined} title="Waiting for telemetry" desc="Run a simulation or import events to populate the activity chart."/>}
         </div>
         <div className="panel-note"><span><i className="pulse-dot"/>Data from stored event timestamps</span><span>No synthetic projections</span></div>
