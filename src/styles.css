@@ -461,3 +461,5 @@ tbody tr:hover{background:#172537}td small{color:#71869c}
  .command-hero-stats small{font-size:6px;letter-spacing:0;overflow-wrap:anywhere}
  .hero-visual-caption b{display:none}
 }
+
+@media(max-width:760px){.command-hero{width:calc(100vw - 30px)!important;max-width:calc(100vw - 30px)!important;margin-left:0;margin-right:0}.command-hero-copy{max-width:100%;padding-right:18px}.command-hero-copy>p{max-width:100%;width:100%}.command-hero-stats{width:100%;max-width:100%}.command-hero-visual{max-width:100%}}
